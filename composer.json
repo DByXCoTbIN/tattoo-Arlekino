@@ -1,0 +1,13 @@
+{
+    "name": "circus/social",
+    "description": "Цирково-готическая социальная платформа мастеров",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0"
+    }
+}

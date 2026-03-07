@@ -1,0 +1,5 @@
+-- Дополнительные соцсети мастера
+ALTER TABLE master_profiles ADD COLUMN vk VARCHAR(255) NULL DEFAULT NULL;
+ALTER TABLE master_profiles ADD COLUMN telegram VARCHAR(255) NULL DEFAULT NULL;
+ALTER TABLE master_profiles ADD COLUMN youtube VARCHAR(255) NULL DEFAULT NULL;
+ALTER TABLE master_profiles ADD COLUMN max_link VARCHAR(255) NULL DEFAULT NULL;
