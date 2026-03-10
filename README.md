@@ -9,35 +9,41 @@ PHP 8+, MySQL.
 - **Мастер** — личный кабинет: публикация работ (фото, видео, текст), просмотр рейтинга и личных сообщений.
 - **Клиент** — просмотр страниц мастеров, их работ, рейтинга и отправка личных сообщений мастерам.
 
-## Установка (MySQL)
+## Установка (MySQL / MariaDB)
 
 1. Скопируйте `.env.example` в `.env`:
    ```bash
    cp .env.example .env
    ```
 
-2. Создайте пользователя и БД в MySQL:
-   ```bash
-   sudo mysql < install/create-db-user.sql
-   ```
-   Создаётся БД `circus_social` и пользователь **circus** / пароль **admin123**.
+2. Создайте пользователя и базу данных в MySQL/MariaDB:
+   - **Linux / macOS (терминал):**
+     ```bash
+     mysql -u root -p < install/create-db-user.sql
+     ```
+   - **Windows (XAMPP / WAMP / отдельный сервер):**
+     - откройте консоль MySQL/MariaDB от имени администратора;
+     - выполните содержимое файла `install/create-db-user.sql` (через `SOURCE` или просто скопировав SQL).
 
-3. Установите зависимости (если есть composer):
+   По умолчанию создаётся БД `circus_social` и пользователь **circus** / пароль **admin123**  
+   (в продакшене пароль рекомендуется сменить).
+
+3. Установите зависимости (если используете Composer):
    ```bash
    composer install
    ```
 
-4. Создайте таблицы и админа:
+4. Создайте таблицы и первого админа:
    ```bash
    php install/install.php
    php install/migrate_v2.php
    ```
 
-5. Запуск:
+5. Запуск встроенного сервера PHP (для разработки):
    ```bash
    php -S 0.0.0.0:8000 -t public
    ```
-   Сайт: http://localhost:8000
+   Сайт будет доступен по адресу: http://localhost:8000
 
 **Админ по умолчанию:** admin@circus.local / admin123
 
@@ -50,7 +56,7 @@ PHP 8+, MySQL.
 ## Устранение проблем
 
 - **Unit mysql.service not found** — в Ubuntu часто стоит MariaDB. Запустите: `sudo systemctl start mariadb`. Если службы нет: `sudo apt-get install -y mariadb-server`
-- **403 Forbidden при apt update** (репозиторий Cursor) — временно отключите его:  
+- **403 Forbidden при apt update** — временно отключите его:  
   `sudo mv /etc/apt/sources.list.d/cursor*.list /etc/apt/sources.list.d/cursor.list.bak 2>/dev/null; sudo apt-get update`  
   Затем установите вручную: `sudo apt-get install -y php-mysql` (или `php8.3-mysql`), потом снова включите репозиторий при необходимости.
 - После установки драйвера и запуска MariaDB/MySQL выполните вручную:  
