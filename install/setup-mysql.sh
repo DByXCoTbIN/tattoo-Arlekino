@@ -20,7 +20,6 @@ echo "Проверьте .env: DB_USER и DB_PASS (логин/пароль MySQL
 echo ""
 
 echo "=== 1. Установка PHP MySQL (потребуется пароль sudo) ==="
-echo "Если apt update выдаст 403 (репозиторий Cursor) — временно отключите его в /etc/apt/sources.list.d/ или выполните шаги вручную."
 sudo apt-get update 2>/dev/null || true
 sudo apt-get install -y php-mysql 2>/dev/null || sudo apt-get install -y php8.3-mysql 2>/dev/null || true
 
