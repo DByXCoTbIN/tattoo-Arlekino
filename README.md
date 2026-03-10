@@ -53,16 +53,6 @@ PHP 8+, MySQL.
 
 Одной командой: `./install/setup-mysql.sh` — проверка MariaDB, установка php-mysql, создание таблиц, миграция, запуск сервера.
 
-## Устранение проблем
-
-- **Unit mysql.service not found** — в Ubuntu часто стоит MariaDB. Запустите: `sudo systemctl start mariadb`. Если службы нет: `sudo apt-get install -y mariadb-server`
-- **403 Forbidden при apt update** — временно отключите его:  
-  `sudo mv /etc/apt/sources.list.d/cursor*.list /etc/apt/sources.list.d/cursor.list.bak 2>/dev/null; sudo apt-get update`  
-  Затем установите вручную: `sudo apt-get install -y php-mysql` (или `php8.3-mysql`), потом снова включите репозиторий при необходимости.
-- После установки драйвера и запуска MariaDB/MySQL выполните вручную:  
-  `php install/install.php`  
-  затем запуск сервера: `php -S 0.0.0.0:8000 -t public`
-
 ## Структура
 
 - `config/` — конфигурация
