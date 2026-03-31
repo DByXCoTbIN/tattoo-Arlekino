@@ -168,8 +168,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     if ($action === 'logo_settings') {
+        $allowedLogoColors = ['auto', 'gold', 'white', 'accent', 'silver', 'black', 'emerald', 'azure', 'violet'];
         Settings::set('logo_remove_bg', isset($_POST['logo_remove_bg']) ? '1' : '0');
-        Settings::set('logo_color', in_array($_POST['logo_color'] ?? '', ['gold', 'white', 'accent', 'auto'], true) ? $_POST['logo_color'] : 'gold');
+        $logoColorDark = in_array($_POST['logo_color_dark'] ?? '', $allowedLogoColors, true) ? (string)$_POST['logo_color_dark'] : 'gold';
+        $logoColorLight = in_array($_POST['logo_color_light'] ?? '', $allowedLogoColors, true) ? (string)$_POST['logo_color_light'] : 'gold';
+        Settings::set('logo_color_dark', $logoColorDark);
+        Settings::set('logo_color_light', $logoColorLight);
+        Settings::set('logo_color', $logoColorDark); // Совместимость со старой настройкой.
+        $logoSize = (int)($_POST['logo_size'] ?? 96);
+        $logoSize = max(48, min(200, $logoSize));
+        Settings::set('logo_size', (string)$logoSize);
         $message = 'Настройки логотипа сохранены.';
         $redirectPage = 'site';
     }
@@ -488,11 +496,38 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
 <div class="admin-section" id="banner">
     <h2>Баннер и приветственные фразы</h2>
     <p>Логотип отображается слева в баннере и в шапке. Фразы с датами показываются в выбранные даты; без дат — постоянно (кроме дат, выбранных другими фразами).</p>
+    <?php
+    $logoPath = Settings::get('site_logo', '');
+    $logoSizeValue = max(48, min(200, (int)Settings::get('logo_size', '96')));
+    $logoHeaderSize = max(20, min(82, (int)round($logoSizeValue * 0.36)));
+    $logoColorOptions = [
+        'auto' => 'Как в файле (без изменений)',
+        'gold' => 'Золотой',
+        'white' => 'Белый',
+        'accent' => 'Бордовый (акцентный)',
+        'silver' => 'Серебряный',
+        'black' => 'Чёрный',
+        'emerald' => 'Изумрудный',
+        'azure' => 'Лазурный',
+        'violet' => 'Фиолетовый',
+    ];
+    $legacyLogoColor = Settings::get('logo_color', 'gold');
+    $currentLogoColorDark = Settings::get('logo_color_dark', $legacyLogoColor ?: 'gold');
+    $currentLogoColorLight = Settings::get('logo_color_light', $legacyLogoColor ?: 'gold');
+    if (!isset($logoColorOptions[$currentLogoColorDark])) $currentLogoColorDark = 'gold';
+    if (!isset($logoColorOptions[$currentLogoColorLight])) $currentLogoColorLight = 'gold';
+    $logoPreviewClassDark = 'site-logo-img logo-preview-color logo-color-' . $currentLogoColorDark;
+    $logoPreviewClassLight = 'site-logo-img logo-preview-color logo-color-' . $currentLogoColorLight;
+    if (Settings::get('logo_remove_bg', '0') === '1') {
+        $logoPreviewClassDark .= ' logo-remove-bg';
+        $logoPreviewClassLight .= ' logo-remove-bg';
+    }
+    ?>
     <form method="post" action="?page=<?= htmlspecialchars($currentPage) ?>" enctype="multipart/form-data" style="margin-bottom: 24px;">
         <input type="hidden" name="action" value="upload_logo">
         <div class="admin-field">
             <label>Логотип студии</label>
-            <?php $logoPath = Settings::get('site_logo', ''); if ($logoPath): ?>
+            <?php if ($logoPath): ?>
             <div class="admin-logo-preview" style="margin: 12px 0; padding: 20px; background: var(--adm-surface); border: 1px solid var(--adm-border); border-radius: 8px; display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <div style="background: #1a1a1e; padding: 16px; border-radius: 6px;"><span style="font-size: 0.8rem; color: var(--adm-muted); display: block; margin-bottom: 8px;">Тёмный фон</span><img src="<?= htmlspecialchars($root . ltrim($logoPath, '/')) ?>" alt="" style="max-height: 48px; max-width: 120px; object-fit: contain; display: block;"></div>
                 <div style="background: #f5f4f2; padding: 16px; border-radius: 6px;"><span style="font-size: 0.8rem; color: #6b6b75; display: block; margin-bottom: 8px;">Светлый фон</span><img src="<?= htmlspecialchars($root . ltrim($logoPath, '/')) ?>" alt="" style="max-height: 48px; max-width: 120px; object-fit: contain; display: block;"></div>
@@ -513,16 +548,131 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
             <small style="color: var(--adm-muted); display: block; margin-top: 4px;">Делает белые и светлые области прозрачными на тёмном фоне сайта.</small>
         </div>
         <div class="admin-field" style="margin-bottom: 12px;">
-            <label>Цвет логотипа</label>
-            <select name="logo_color" style="padding: 8px 12px; border-radius: 6px; background: var(--adm-surface); border: 1px solid var(--adm-border); color: var(--adm-text); min-width: 180px;">
-                <option value="auto" <?= Settings::get('logo_color', 'gold') === 'auto' ? 'selected' : '' ?>>Как в файле (без изменений)</option>
-                <option value="gold" <?= Settings::get('logo_color', 'gold') === 'gold' ? 'selected' : '' ?>>Золотой (под стиль проекта)</option>
-                <option value="white" <?= Settings::get('logo_color', 'gold') === 'white' ? 'selected' : '' ?>>Белый</option>
-                <option value="accent" <?= Settings::get('logo_color', 'gold') === 'accent' ? 'selected' : '' ?>>Акцентный (бордовый)</option>
+            <label>Заливка логотипа для тёмной темы</label>
+            <select id="logoColorDark" name="logo_color_dark" style="padding: 8px 12px; border-radius: 6px; background: var(--adm-surface); border: 1px solid var(--adm-border); color: var(--adm-text); min-width: 240px;">
+                <?php foreach ($logoColorOptions as $colorKey => $colorLabel): ?>
+                    <option value="<?= htmlspecialchars($colorKey) ?>" <?= $currentLogoColorDark === $colorKey ? 'selected' : '' ?>><?= htmlspecialchars($colorLabel) ?></option>
+                <?php endforeach; ?>
             </select>
         </div>
+        <div class="admin-field" style="margin-bottom: 12px;">
+            <label>Заливка логотипа для светлой темы</label>
+            <select id="logoColorLight" name="logo_color_light" style="padding: 8px 12px; border-radius: 6px; background: var(--adm-surface); border: 1px solid var(--adm-border); color: var(--adm-text); min-width: 240px;">
+                <?php foreach ($logoColorOptions as $colorKey => $colorLabel): ?>
+                    <option value="<?= htmlspecialchars($colorKey) ?>" <?= $currentLogoColorLight === $colorKey ? 'selected' : '' ?>><?= htmlspecialchars($colorLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="admin-field" style="margin-bottom: 12px;">
+            <label for="logoSizeRange">Размер логотипа</label>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <input type="range" id="logoSizeRange" name="logo_size" min="48" max="200" step="1" value="<?= $logoSizeValue ?>" style="width: 220px;">
+                <input type="number" id="logoSizeNumber" min="48" max="200" step="1" value="<?= $logoSizeValue ?>" style="width: 82px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--adm-border); background: var(--adm-surface); color: var(--adm-text);">
+                <span style="color: var(--adm-muted); font-size: 0.9rem;">px</span>
+            </div>
+        </div>
+        <?php if ($logoPath): ?>
+        <div id="logoSizePreview" style="--logo-size-banner: <?= $logoSizeValue ?>px; --logo-size-header: <?= $logoHeaderSize ?>px; margin: 12px 0 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+            <div style="background:#101014; border:1px solid var(--adm-border); border-radius:8px; padding:12px;">
+                <div style="font-size: 0.8rem; color: var(--adm-muted); margin-bottom:8px;">Превью в баннере</div>
+                <div style="height:110px; display:flex; align-items:center; justify-content:center; border-radius:6px;">
+                    <img id="logoPreviewBanner" src="<?= htmlspecialchars($root . ltrim($logoPath, '/')) ?>" alt="" class="<?= htmlspecialchars($logoPreviewClassDark) ?>" style="max-height: var(--logo-size-banner); max-width: calc(var(--logo-size-banner) * 1.8); object-fit: contain; display:block;">
+                </div>
+            </div>
+            <div style="background:#101014; border:1px solid var(--adm-border); border-radius:8px; padding:12px;">
+                <div style="font-size: 0.8rem; color: var(--adm-muted); margin-bottom:8px;">Превью в шапке</div>
+                <div style="height:40px; width:120px; display:flex; align-items:center; justify-content:center; border-radius:6px;">
+                    <img id="logoPreviewHeader" src="<?= htmlspecialchars($root . ltrim($logoPath, '/')) ?>" alt="" class="header-logo <?= htmlspecialchars($logoPreviewClassLight) ?>" style="max-height: var(--logo-size-header); max-width: 100%; object-fit: contain; display:block;">
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
         <button type="submit" class="admin-btn admin-btn--primary">Сохранить оформление</button>
     </form>
+    <script>
+    (function () {
+        var range = document.getElementById('logoSizeRange');
+        var number = document.getElementById('logoSizeNumber');
+        var preview = document.getElementById('logoSizePreview');
+        var colorDark = document.getElementById('logoColorDark');
+        var colorLight = document.getElementById('logoColorLight');
+        var previewBanner = document.getElementById('logoPreviewBanner');
+        var previewHeader = document.getElementById('logoPreviewHeader');
+        if (!range || !number) return;
+        var colorClasses = ['logo-color-auto', 'logo-color-gold', 'logo-color-white', 'logo-color-accent', 'logo-color-silver', 'logo-color-black', 'logo-color-emerald', 'logo-color-azure', 'logo-color-violet'];
+        function applyPreviewColor(img, value) {
+            if (!img) return;
+            colorClasses.forEach(function (c) { img.classList.remove(c); });
+            img.classList.add('logo-color-' + value);
+        }
+        function processLogoImage(img) {
+            if (!img || !img.classList.contains('logo-remove-bg') || img.dataset.logoBgProcessed === '1') return;
+            var apply = function () {
+                if (!img.naturalWidth || !img.naturalHeight) return;
+                var canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                var ctx = canvas.getContext('2d', { willReadFrequently: true });
+                if (!ctx) return;
+                ctx.drawImage(img, 0, 0);
+                var imageData;
+                try { imageData = ctx.getImageData(0, 0, canvas.width, canvas.height); } catch (e) { return; }
+                var data = imageData.data;
+                for (var i = 0; i < data.length; i += 4) {
+                    var r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                    if (a === 0) continue;
+                    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+                    var sat = max - min, bright = (r + g + b) / 3;
+                    if (bright >= 244 && sat <= 18) { data[i + 3] = 0; continue; }
+                    if (bright >= 226 && sat <= 32) {
+                        var fade = (bright - 226) / 28;
+                        data[i + 3] = Math.round(a * (1 - Math.max(0, Math.min(1, fade))));
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+                img.dataset.logoBgProcessed = '1';
+                img.src = canvas.toDataURL('image/png');
+            };
+            if (img.complete) apply(); else img.addEventListener('load', apply, { once: true });
+        }
+        function clamp(v) {
+            v = parseInt(v, 10);
+            if (Number.isNaN(v)) v = 96;
+            return Math.max(48, Math.min(200, v));
+        }
+        function update(value, source) {
+            var size = clamp(value);
+            range.value = String(size);
+            number.value = String(size);
+            if (preview) {
+                var headerSize = Math.max(20, Math.min(82, Math.round(size * 0.36)));
+                preview.style.setProperty('--logo-size-banner', size + 'px');
+                preview.style.setProperty('--logo-size-header', headerSize + 'px');
+            }
+            if (source === 'number') {
+                var hidden = document.querySelector('input[name="logo_size"]');
+                if (hidden && hidden !== range) hidden.value = String(size);
+            }
+        }
+        range.addEventListener('input', function () { update(range.value, 'range'); });
+        number.addEventListener('input', function () { update(number.value, 'number'); });
+        number.addEventListener('blur', function () { update(number.value, 'number'); });
+        if (colorDark) {
+            colorDark.addEventListener('change', function () {
+                applyPreviewColor(previewBanner, colorDark.value || 'gold');
+            });
+        }
+        if (colorLight) {
+            colorLight.addEventListener('change', function () {
+                applyPreviewColor(previewHeader, colorLight.value || 'gold');
+            });
+        }
+        document.querySelectorAll('#logoSizePreview img.logo-remove-bg').forEach(processLogoImage);
+        if (colorDark) applyPreviewColor(previewBanner, colorDark.value || 'gold');
+        if (colorLight) applyPreviewColor(previewHeader, colorLight.value || 'gold');
+        update(range.value, 'range');
+    })();
+    </script>
     <h3>Приветственные фразы</h3>
     <form method="post" action="">
         <input type="hidden" name="action" value="add_phrase">

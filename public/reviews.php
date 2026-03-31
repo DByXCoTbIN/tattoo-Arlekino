@@ -8,6 +8,7 @@ use App\Auth;
 use App\Settings;
 use App\RatingRepository;
 use App\Repositories\UserRepo;
+use App\Seo;
 
 Auth::init();
 $config = require dirname(__DIR__) . '/config/config.php';
@@ -35,7 +36,32 @@ $master = $userRepo->getMasterProfile($masterId, true);
 $ratings = $ratingRepo->getForMaster($masterId, 100, true);
 $isOwnProfile = $user && (int)$user['id'] === $masterId;
 
-$pageTitle = 'Отзывы — ' . $master['full_name'];
+$pageTitle = 'Отзывы о мастере ' . $master['full_name'];
+$canonicalUrl = Seo::absoluteUrl('reviews.php', ['id' => $masterId], $config);
+$avg = (float) ($master['rating_avg'] ?? 0);
+$cnt = (int) ($master['rating_count'] ?? 0);
+$pageDescription = Seo::metaSnippet(
+    'Отзывы клиентов о ' . $master['full_name'] . ($cnt > 0 ? ': ★' . $avg . ', ' . $cnt . ' оценок.' : '.')
+);
+$structuredData = [
+    '@context' => 'https://schema.org',
+    '@type' => 'WebPage',
+    'name' => $pageTitle,
+    'url' => $canonicalUrl,
+    'about' => [
+        '@type' => 'Person',
+        'name' => $master['full_name'],
+    ],
+];
+if ($cnt > 0 && $avg > 0) {
+    $structuredData['about']['aggregateRating'] = [
+        '@type' => 'AggregateRating',
+        'ratingValue' => $avg,
+        'reviewCount' => $cnt,
+        'bestRating' => 5,
+        'worstRating' => 1,
+    ];
+}
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/reviews.php';
 require __DIR__ . '/../templates/layout/footer.php';

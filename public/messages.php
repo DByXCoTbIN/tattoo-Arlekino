@@ -41,6 +41,7 @@ if ($groupId && !$user) {
         $currentGroup = $group;
         $guestGroupMessages = $groupRepo->getMessages($groupId);
         $pageTitle = 'Группа: ' . ($group['name'] ?? 'Чат');
+        $pageRobots = 'noindex, nofollow';
         require __DIR__ . '/../templates/layout/header.php';
         require __DIR__ . '/../templates/group_guest.php';
         require __DIR__ . '/../templates/layout/footer.php';
@@ -130,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $currentConv) {
 $pageTitle = 'Сообщения';
 $bodyClass = 'messages-page';
 $isBanned = Auth::isBanned();
+$pageRobots = 'noindex, nofollow';
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/messages.php';
 require __DIR__ . '/../templates/layout/footer.php';

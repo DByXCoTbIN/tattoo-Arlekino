@@ -2,7 +2,7 @@
 <div class="reviews-page">
     <p style="margin-bottom: 20px;"><a href="<?= htmlspecialchars($root . 'master.php?id=' . (int)$master['id']) ?>" class="reviews-back">← <?= htmlspecialchars($master['full_name']) ?></a></p>
     <div class="card reviews-header-card">
-        <h1 class="card-title">Отзывы о мастере</h1>
+        <h1 class="card-title">Отзывы о <?= htmlspecialchars($master['full_name']) ?></h1>
         <div class="reviews-master-info">
             <?php if (!empty($master['avatar_path'])): ?>
                 <img src="<?= htmlspecialchars($root . ltrim($master['avatar_path'], '/')) ?>" alt="" class="reviews-avatar">

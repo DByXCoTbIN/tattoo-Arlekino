@@ -47,11 +47,11 @@ php -S 0.0.0.0:8000 -t public
 
 ## Структура .env
 
-| Переменная   | Описание           | Пример                |
+| Переменная   | Описание           | Пример                 |
 |--------------|--------------------|------------------------|
 | DB_DRIVER    | Драйвер БД         | mysql                  |
 | DB_HOST      | Хост БД            | 127.0.0.1              |
-| DB_NAME      | Имя БД             | circus_social           |
-| DB_USER      | Пользователь MySQL | circus                  |
+| DB_NAME      | Имя БД             | circus_social          |
+| DB_USER      | Пользователь MySQL | circus                 |
 | DB_PASS      | Пароль             | admin123               |
 | SITE_URL     | Полный URL сайта   | http://localhost:8000  |

@@ -34,6 +34,7 @@ if (Auth::isAdmin()) {
     $siteName = \App\Settings::get('site_name', $config['site']['name']);
     $pageTitle = 'Чаты поддержки';
     $bodyClass = 'support-list-page';
+    $pageRobots = 'noindex, nofollow';
     require __DIR__ . '/../templates/layout/header.php';
     require __DIR__ . '/../templates/support_list.php';
     require __DIR__ . '/../templates/layout/footer.php';

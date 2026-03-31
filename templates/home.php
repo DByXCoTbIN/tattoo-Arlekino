@@ -9,8 +9,8 @@ $sectionFeedTitle = \App\Settings::get('section_feed_title', 'Лента');
 $sectionServicesTitle = \App\Settings::get('section_services_title', 'Услуги студии');
 $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас найти');
 ?>
-<section class="hero-studio">
-    <p class="tagline"><?= htmlspecialchars($heroTitle) ?></p>
+<section class="hero-studio" aria-labelledby="hero-heading">
+    <h2 id="hero-heading" class="tagline"><?= htmlspecialchars($heroTitle) ?></h2>
     <p class="site-desc"><?= htmlspecialchars($heroTagline) ?></p>
 </section>
 
@@ -43,7 +43,7 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
                  data-reviews-url="<?= htmlspecialchars($root . 'reviews.php?id=' . (int)$m['id']) ?>">
                 <div class="avatar-wrap">
                     <?php if (!empty($m['avatar_path'])): ?>
-                        <img src="<?= htmlspecialchars($root . ltrim($m['avatar_path'] ?? '', '/')) ?>" alt="">
+                        <img src="<?= htmlspecialchars($root . ltrim($m['avatar_path'] ?? '', '/')) ?>" alt="<?= htmlspecialchars($m['full_name'] ?? '') ?>" loading="lazy" decoding="async">
                     <?php else: ?>
                         <span class="avatar-initials-sm" aria-hidden="true"><?= mb_strtoupper(mb_substr($m['full_name'] ?? '?', 0, 1)) ?></span>
                     <?php endif; ?>
@@ -162,7 +162,7 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
                 <div class="post-media">
                     <?php foreach ($post['media'] as $med): ?>
                         <?php if ($med['media_type'] === 'image'): ?>
-                            <img src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>" alt="">
+                            <img src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>" alt="Работа мастера <?= htmlspecialchars($post['full_name'] ?? '') ?>" loading="lazy" decoding="async">
                         <?php elseif ($med['media_type'] === 'video'): ?>
                             <video controls src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>"></video>
                         <?php endif; ?>
@@ -201,6 +201,9 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
         modalTitle.textContent = name;
         modalRating.textContent = '★ Рейтинг: ' + rating + ' (' + count + ' оценок)';
         modalBio.textContent = bio || 'Нет описания.';
+        modalBio.classList.add('is-collapsed');
+        modalBio.setAttribute('aria-expanded', 'false');
+        modalBio.title = 'Нажмите, чтобы развернуть';
         modalLink.href = url;
         var reviewsLink = document.getElementById('modalReviewsLink');
         if (reviewsLink) reviewsLink.href = reviewsUrl;
@@ -230,6 +233,15 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
     });
     if (modalClose) modalClose.addEventListener('click', closeModal);
     if (modal) modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+    if (modalBio) {
+        modalBio.addEventListener('click', function (e) {
+            e.stopPropagation();
+            modalBio.classList.toggle('is-collapsed');
+            var collapsed = modalBio.classList.contains('is-collapsed');
+            modalBio.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            modalBio.title = collapsed ? 'Нажмите, чтобы развернуть' : 'Нажмите, чтобы свернуть';
+        });
+    }
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
 
     var prev = document.querySelector('.carousel-btn.prev');

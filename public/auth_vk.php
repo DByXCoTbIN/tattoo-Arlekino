@@ -11,6 +11,11 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $base = defined('BASE_PATH') ? BASE_PATH : '';
 $root = ($base !== '') ? rtrim($base, '/') . '/' : '/';
+
+// Временно отключено по запросу.
+header('Location: ' . $root . 'login.php?error=oauth_disabled');
+exit;
+
 $redirectUri = OAuthService::buildAbsoluteUrl($base . '/auth_vk_callback.php');
 $state = bin2hex(random_bytes(16));
 $_SESSION['vk_oauth_state'] = $state;

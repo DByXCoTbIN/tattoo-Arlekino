@@ -31,14 +31,17 @@ date_default_timezone_set(
 );
 
 if (!defined('BASE_PATH')) {
-    $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/');
-    if (str_ends_with($scriptDir, '/admin')) {
+    $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/\\');
+    if ($scriptDir === '.' || $scriptDir === DIRECTORY_SEPARATOR) {
+        $scriptDir = '';
+    }
+    if (str_ends_with($scriptDir, '/admin') || str_ends_with($scriptDir, '\\admin')) {
         $scriptDir = dirname($scriptDir);
+        $scriptDir = $scriptDir === '.' || $scriptDir === DIRECTORY_SEPARATOR ? '' : rtrim($scriptDir, '/\\');
     }
     define('BASE_PATH', $scriptDir === '' ? '' : $scriptDir);
 }
 
-// Полифилл mbstring для систем без расширения (рекомендуется: sudo apt install php-mbstring)
 if (!function_exists('mb_strtoupper')) {
     function mb_strtoupper(string $str, ?string $encoding = null): string {
         return strtoupper($str);

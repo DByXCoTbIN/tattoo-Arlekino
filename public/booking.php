@@ -59,6 +59,7 @@ if ($schedule && $_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['action'] ?? 
 
 $pageTitle = 'Запись к мастеру';
 $bodyClass = 'profile-page';
+$pageRobots = 'noindex, nofollow';
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/booking.php';
 require __DIR__ . '/../templates/layout/footer.php';

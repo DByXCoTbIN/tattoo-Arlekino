@@ -35,6 +35,16 @@ $adminCssPath = $root . 'css/admin.css';
 
 $cfg = @require __DIR__ . '/../../config/config.php';
 $siteName = $siteName ?? ($cfg['site']['name'] ?? 'АрлекинО');
+$seoCfg = $cfg['seo'] ?? [];
+$pageDescription = $pageDescription ?? null;
+$canonicalUrl = $canonicalUrl ?? null;
+$pageRobots = $pageRobots ?? (($bodyClass ?? '') === 'admin-page' ? 'noindex, nofollow' : null);
+$ogImage = $ogImage ?? null;
+$structuredData = $structuredData ?? null;
+$logoSize = (int)\App\Settings::get('logo_size', '96');
+$logoSize = max(48, min(200, $logoSize));
+$logoSizeHeader = max(20, min(82, (int)round($logoSize * 0.36)));
+$logoCssVars = '--logo-size-banner:' . $logoSize . 'px;--logo-size-header:' . $logoSizeHeader . 'px;';
 
 $notificationCount = 0;
 $notificationItems = [];
@@ -52,12 +62,60 @@ if ($user && isset($user['id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= htmlspecialchars($pageTitle ?? 'Главная') ?> — <?= htmlspecialchars($siteName) ?></title>
+    <?php if (!empty($pageDescription)): ?>
+    <meta name="description" content="<?= htmlspecialchars($pageDescription) ?>">
+    <?php endif; ?>
+    <?php if (!empty($pageRobots)): ?>
+    <meta name="robots" content="<?= htmlspecialchars($pageRobots) ?>">
+    <?php endif; ?>
+    <?php if (!empty($canonicalUrl)): ?>
+    <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl) ?>">
+    <?php endif; ?>
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="<?= htmlspecialchars(($pageTitle ?? 'Главная') . ' — ' . $siteName) ?>">
+    <?php if (!empty($pageDescription)): ?>
+    <meta property="og:description" content="<?= htmlspecialchars($pageDescription) ?>">
+    <?php endif; ?>
+    <?php if (!empty($canonicalUrl)): ?>
+    <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl) ?>">
+    <?php endif; ?>
+    <?php if (!empty($ogImage)): ?>
+    <meta property="og:image" content="<?= htmlspecialchars($ogImage) ?>">
+    <?php endif; ?>
+    <meta property="og:site_name" content="<?= htmlspecialchars($siteName) ?>">
+    <?php if (!empty($seoCfg['yandex_verification'])): ?>
+    <meta name="yandex-verification" content="<?= htmlspecialchars($seoCfg['yandex_verification']) ?>">
+    <?php endif; ?>
+    <?php if (!empty($seoCfg['google_verification'])): ?>
+    <meta name="google-site-verification" content="<?= htmlspecialchars($seoCfg['google_verification']) ?>">
+    <?php endif; ?>
+    <?php if (is_array($structuredData) && $structuredData !== []): ?>
+    <?php
+    $ldJson = json_encode($structuredData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | (defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0));
+    if ($ldJson !== false):
+    ?>
+    <script type="application/ld+json"><?= $ldJson ?></script>
+    <?php endif; ?>
+    <?php endif; ?>
     <link rel="stylesheet" href="<?= htmlspecialchars($cssPath) ?>">
     <?php if ($bodyClass === 'admin-page'): ?>
     <link rel="stylesheet" href="<?= htmlspecialchars($adminCssPath) ?>">
     <?php endif; ?>
+    <?php
+    $ymId = (int) ($seoCfg['yandex_metrika_id'] ?? 0);
+    if ($ymId > 0 && ($bodyClass ?? '') !== 'admin-page'):
+    ?>
+    <script>
+    (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};m[i].l=1*new Date();
+    for (var j=0;j<document.scripts.length;j++){if(document.scripts[j].src===r){return;}}
+    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+    (window,document,"script","https://mc.yandex.ru/metrika/tag.js","ym");
+    ym(<?= $ymId ?>, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/<?= $ymId ?>" style="position:absolute;left:-9999px" alt=""></div></noscript>
+    <?php endif; ?>
 </head>
-<body class="<?= htmlspecialchars($bodyClass) ?>">
+<body class="<?= htmlspecialchars($bodyClass) ?>" style="<?= htmlspecialchars($logoCssVars) ?>">
 <?php if ($bodyClass === 'admin-page' && empty($adminSidebarLayout)): ?>
 <header class="admin-top">
     <h1 class="admin-top__title"><span class="arlequino-gothic"><?= htmlspecialchars($siteName) ?></span> <span>— Админка</span></h1>
@@ -68,10 +126,15 @@ if ($user && isset($user['id'])) {
 <?php
 $logoPath = \App\Settings::get('site_logo', '');
 $logoRemoveBg = \App\Settings::get('logo_remove_bg', '0') === '1';
-$logoColor = \App\Settings::get('logo_color', 'gold');
+$allowedLogoColors = ['auto', 'gold', 'white', 'accent', 'silver', 'black', 'emerald', 'azure', 'violet'];
+$legacyLogoColor = \App\Settings::get('logo_color', 'gold');
+$logoColorDark = \App\Settings::get('logo_color_dark', $legacyLogoColor ?: 'gold');
+$logoColorLight = \App\Settings::get('logo_color_light', $legacyLogoColor ?: 'gold');
+if (!in_array($logoColorDark, $allowedLogoColors, true)) $logoColorDark = 'gold';
+if (!in_array($logoColorLight, $allowedLogoColors, true)) $logoColorLight = 'gold';
 $logoClasses = 'site-logo-img';
 if ($logoRemoveBg) $logoClasses .= ' logo-remove-bg';
-if ($logoColor !== 'auto') $logoClasses .= ' logo-color-' . $logoColor;
+$logoClasses .= ' logo-color-dark-' . $logoColorDark . ' logo-color-light-' . $logoColorLight;
 $isBannedHeader = \App\Auth::isBanned();
 try {
     $welcomePhrase = (new \App\WelcomePhraseRepository())->getPhraseForDate(null);
@@ -167,7 +230,7 @@ try {
                         </div>
                     </div>
                 </div>
-                <span style="color: var(--text-muted);"><?= htmlspecialchars($user['full_name']) ?></span>
+                <span class="nav-user-name"><?= htmlspecialchars($user['full_name']) ?></span>
                 <button type="button" class="theme-toggle btn" id="themeToggle" aria-label="Переключить тему" title="Тема">Свет</button>
                 <a href="<?= htmlspecialchars($root . 'logout.php') ?>" class="btn">Выход</a>
             <?php else: ?>
@@ -181,6 +244,66 @@ try {
 </header>
 <script>
 (function(){ var k='circus_theme'; var L='light'; var D='dark'; function set(t){ document.documentElement.setAttribute('data-theme', t||D); var b=document.getElementById('themeToggle'); if(b) b.textContent=(t===L)?'Тёмная':'Свет'; } var s=localStorage.getItem(k); set(s===L||s===D?s:D); var b=document.getElementById('themeToggle'); if(b) b.addEventListener('click',function(){ var n=document.documentElement.getAttribute('data-theme')===L?D:L; localStorage.setItem(k,n); set(n); }); })();
+</script>
+<script>
+(function () {
+    function processLogoImage(img) {
+        if (!img || img.dataset.logoBgProcessed === '1') return;
+        var apply = function () {
+            if (!img.naturalWidth || !img.naturalHeight) return;
+            var canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            var ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0);
+            var imageData;
+            try {
+                imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            } catch (e) {
+                return;
+            }
+            var data = imageData.data;
+            for (var i = 0; i < data.length; i += 4) {
+                var r = data[i];
+                var g = data[i + 1];
+                var b = data[i + 2];
+                var a = data[i + 3];
+                if (a === 0) continue;
+                var max = Math.max(r, g, b);
+                var min = Math.min(r, g, b);
+                var sat = max - min;
+                var bright = (r + g + b) / 3;
+                if (bright >= 244 && sat <= 18) {
+                    data[i + 3] = 0;
+                    continue;
+                }
+                if (bright >= 226 && sat <= 32) {
+                    var fade = (bright - 226) / 28;
+                    var alphaMul = 1 - Math.max(0, Math.min(1, fade));
+                    data[i + 3] = Math.round(a * alphaMul);
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            img.dataset.logoBgProcessed = '1';
+            img.src = canvas.toDataURL('image/png');
+        };
+        if (img.complete) {
+            apply();
+        } else {
+            img.addEventListener('load', apply, { once: true });
+        }
+    }
+    function init() {
+        var logos = document.querySelectorAll('img.logo-remove-bg');
+        for (var i = 0; i < logos.length; i++) processLogoImage(logos[i]);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
 </script>
 <script>
 (function(){

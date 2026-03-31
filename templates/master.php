@@ -44,7 +44,7 @@ $workEnd = $formatTime($schedule['work_end'] ?? null);
         <div class="profile-cover"<?= !empty($master['banner_path']) ? ' style="background-image: url(\'' . htmlspecialchars($root . ltrim($master['banner_path'] ?? '', '/')) . '\');"' : '' ?>></div>
         <div class="avatar-block">
             <?php if (!empty($master['avatar_path'])): ?>
-                <img src="<?= htmlspecialchars($root . ltrim($master['avatar_path'] ?? '', '/')) ?>" alt="" class="avatar-img">
+                <img src="<?= htmlspecialchars($root . ltrim($master['avatar_path'] ?? '', '/')) ?>" alt="<?= htmlspecialchars($master['full_name'] ?? '') ?>" class="avatar-img" decoding="async">
             <?php else: ?>
                 <div class="avatar-placeholder"><?= mb_strtoupper(mb_substr($master['full_name'] ?? '?', 0, 1)) ?></div>
             <?php endif; ?>
@@ -105,7 +105,7 @@ $workEnd = $formatTime($schedule['work_end'] ?? null);
                 <div class="post-header" style="<?= $isOwner ? 'justify-content: space-between;' : '' ?>">
                     <div style="display: flex; align-items: center; gap: 12px;">
                         <?php if (!empty($master['avatar_path'])): ?>
-                            <img src="<?= htmlspecialchars($root . ltrim($master['avatar_path'] ?? '', '/')) ?>" alt="" class="post-avatar">
+                            <img src="<?= htmlspecialchars($root . ltrim($master['avatar_path'] ?? '', '/')) ?>" alt="<?= htmlspecialchars($master['full_name'] ?? '') ?>" class="post-avatar" decoding="async">
                         <?php else: ?>
                             <div class="post-avatar avatar-initials-sm"><?= mb_strtoupper(mb_substr($master['full_name'] ?? '?', 0, 1)) ?></div>
                         <?php endif; ?>
@@ -129,7 +129,7 @@ $workEnd = $formatTime($schedule['work_end'] ?? null);
                     <div class="post-media">
                         <?php foreach ($post['media'] as $med): ?>
                             <?php if ($med['media_type'] === 'image'): ?>
-                                <img src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>" alt="">
+                                <img src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>" alt="Портфолио: <?= htmlspecialchars($master['full_name'] ?? '') ?>" loading="lazy" decoding="async">
                             <?php elseif ($med['media_type'] === 'video'): ?>
                                 <video controls src="<?= htmlspecialchars($root . ltrim($med['file_path'] ?? '', '/')) ?>"></video>
                             <?php endif; ?>

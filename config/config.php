@@ -34,4 +34,9 @@ return [
             'client_secret' => $_ENV['VK_CLIENT_SECRET'] ?? getenv('VK_CLIENT_SECRET') ?: '',
         ],
     ],
+    'seo' => [
+        'yandex_metrika_id'   => trim((string) ($_ENV['YANDEX_METRIKA_ID'] ?? getenv('YANDEX_METRIKA_ID') ?: '')),
+        'yandex_verification' => trim((string) ($_ENV['YANDEX_VERIFICATION'] ?? getenv('YANDEX_VERIFICATION') ?: '')),
+        'google_verification' => trim((string) ($_ENV['GOOGLE_VERIFICATION'] ?? getenv('GOOGLE_VERIFICATION') ?: '')),
+    ],
 ];

@@ -7,6 +7,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 use App\Auth;
 use App\Settings;
 use App\Repositories\UserRepo;
+use App\Seo;
 
 Auth::init();
 if (Auth::user()) {
@@ -57,11 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $config = require dirname(__DIR__) . '/config/config.php';
-$oauthConfig = \App\OAuthService::getConfig();
-$hasTelegram = !empty($oauthConfig['telegram']['bot_token']) && !empty($oauthConfig['telegram']['bot_username']);
-$hasVk = !empty($oauthConfig['vk']['client_id']) && !empty($oauthConfig['vk']['client_secret']);
 $siteName = Settings::get('site_name', $config['site']['name']);
-$pageTitle = 'Регистрация';
+$pageTitle = 'Регистрация клиента или мастера';
+$pageDescription = Seo::metaSnippet('Регистрация в ' . $siteName . ': запись к мастерам, отзывы и личные сообщения.');
+$canonicalUrl = Seo::absoluteUrl('register.php', [], $config);
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/register.php';
 require __DIR__ . '/../templates/layout/footer.php';

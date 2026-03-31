@@ -11,6 +11,10 @@ Auth::init();
 $base = defined('BASE_PATH') ? BASE_PATH : '';
 $root = ($base !== '') ? rtrim($base, '/') . '/' : '/';
 
+// Временно отключено по запросу.
+header('Location: ' . $root . 'login.php?error=oauth_disabled');
+exit;
+
 if (Auth::user()) {
     header('Location: ' . $root);
     exit;

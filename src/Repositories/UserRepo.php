@@ -164,10 +164,18 @@ class UserRepo
     }
 
     /** Список мастеров для публичного отображения: верифицированные мастера и все админы (админы показываются всегда). */
-    public function getMasters(int $limit = 50, int $offset = 0): array
+    public function getMasters(int $limit = 50, int $offset = 0, string $sort = 'reviews'): array
     {
         $limit = max(1, min(100, $limit));
         $offset = max(0, $offset);
+        $ratingAvgExpr = "CASE WHEN COALESCE(mp.rating_count, 0) > 0 THEN (COALESCE(mp.rating_sum, 0) * 1.0 / mp.rating_count) ELSE 0 END";
+        $orderMap = [
+            'reviews' => $ratingAvgExpr . " DESC, COALESCE(mp.rating_count, 0) DESC, u.full_name ASC",
+            'days' => "u.created_at ASC, u.full_name ASC",
+            'reviews_count' => "COALESCE(mp.rating_count, 0) DESC, " . $ratingAvgExpr . " DESC, u.full_name ASC",
+            'alphabet' => "u.full_name ASC",
+        ];
+        $orderBy = $orderMap[$sort] ?? $orderMap['reviews'];
         $stmt = $this->pdo->prepare("
             SELECT u.*, mp.bio, mp.specialization, mp.rating_sum, mp.rating_count, mp.is_verified,
                    CASE WHEN mp.rating_count > 0 THEN ROUND(mp.rating_sum / mp.rating_count, 1) ELSE 0 END AS rating_avg
@@ -175,11 +183,28 @@ class UserRepo
             LEFT JOIN master_profiles mp ON mp.user_id = u.id
             WHERE u.role IN ('master', 'admin') AND u.is_banned = 0
               AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
-            ORDER BY mp.rating_count DESC, u.created_at DESC
+            ORDER BY " . $orderBy . "
             LIMIT " . $limit . " OFFSET " . $offset . "
         ");
         $stmt->execute([]);
         return $stmt->fetchAll();
+    }
+
+    /** ID публичных мастеров (те же условия, что у getMasters) — для sitemap. */
+    public function getPublicMasterIds(): array
+    {
+        $stmt = $this->pdo->query("
+            SELECT u.id
+            FROM users u
+            LEFT JOIN master_profiles mp ON mp.user_id = u.id
+            WHERE u.role IN ('master', 'admin') AND u.is_banned = 0
+              AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
+            ORDER BY u.id
+        ");
+        if (!$stmt) {
+            return [];
+        }
+        return array_map('intval', array_column($stmt->fetchAll(), 'id'));
     }
 
     /**

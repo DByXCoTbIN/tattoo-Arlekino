@@ -10,6 +10,7 @@ use App\PostRepository;
 use App\RatingRepository;
 use App\BookingRepository;
 use App\Repositories\UserRepo;
+use App\Seo;
 
 Auth::init();
 $config = require dirname(__DIR__) . '/config/config.php';
@@ -128,10 +129,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $pendingRatings = $isOwner ? array_filter($ratings, fn($r) => ($r['status'] ?? '') === 'pending') : [];
 
-$pageTitle = $master['full_name'];
+$pageTitle = $master['full_name'] . ' — тату-мастер';
 $bodyClass = 'profile-page';
 $roleLabel = ($master['role'] ?? '') === 'admin' ? 'Администратор' : 'Мастер';
 $hideReviewRequest = ($canRate && !empty($_GET['review']));
+$pageDescription = Seo::metaSnippet(trim((string) (($master['bio'] ?? '') ?: ($master['specialization'] ?? '') ?: 'Страница мастера студии ' . $siteName)));
+$canonicalUrl = Seo::absoluteUrl('master.php', ['id' => $masterId], $config);
+if (!empty($master['avatar_path'])) {
+    $ogImage = rtrim(Seo::publicBase($config), '/') . '/' . ltrim((string) $master['avatar_path'], '/');
+}
+$structuredData = [
+    '@context' => 'https://schema.org',
+    '@type' => 'ProfilePage',
+    'mainEntity' => [
+        '@type' => 'Person',
+        'name' => $master['full_name'],
+        'description' => Seo::metaSnippet((string) ($master['bio'] ?? ''), 320),
+        'url' => $canonicalUrl,
+        'jobTitle' => 'Тату-мастер',
+    ],
+];
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/master.php';
 require __DIR__ . '/../templates/layout/footer.php';

@@ -143,6 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $pageTitle = 'Настройки профиля';
 $bodyClass = 'profile-page';
+$pageRobots = 'noindex, nofollow';
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/settings.php';
 require __DIR__ . '/../templates/layout/footer.php';

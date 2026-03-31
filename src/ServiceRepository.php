@@ -38,8 +38,16 @@ class ServiceRepository
     }
 
     /** Только верифицированные мастера (и админы) по услуге. */
-    public function getMastersForService(int $serviceId): array
+    public function getMastersForService(int $serviceId, string $sort = 'reviews'): array
     {
+        $ratingAvgExpr = "CASE WHEN COALESCE(mp.rating_count, 0) > 0 THEN (COALESCE(mp.rating_sum, 0) * 1.0 / mp.rating_count) ELSE 0 END";
+        $orderMap = [
+            'reviews' => $ratingAvgExpr . " DESC, COALESCE(mp.rating_count, 0) DESC, u.full_name ASC",
+            'days' => "u.created_at ASC, u.full_name ASC",
+            'reviews_count' => "COALESCE(mp.rating_count, 0) DESC, " . $ratingAvgExpr . " DESC, u.full_name ASC",
+            'alphabet' => "u.full_name ASC",
+        ];
+        $orderBy = $orderMap[$sort] ?? $orderMap['reviews'];
         $stmt = $this->pdo->prepare("
             SELECT u.*, mp.bio, mp.rating_sum, mp.rating_count, mp.specialization, mp.is_verified
             FROM master_services ms
@@ -47,7 +55,7 @@ class ServiceRepository
             LEFT JOIN master_profiles mp ON mp.user_id = u.id
             WHERE ms.service_id = ? AND u.is_banned = 0 AND u.role IN ('master','admin')
               AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
-            ORDER BY mp.rating_count DESC
+            ORDER BY " . $orderBy . "
         ");
         $stmt->execute([$serviceId]);
         $rows = $stmt->fetchAll();

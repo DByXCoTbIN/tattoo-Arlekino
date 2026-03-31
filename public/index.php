@@ -8,6 +8,7 @@ use App\Auth;
 use App\Settings;
 use App\PostRepository;
 use App\Repositories\UserRepo;
+use App\Seo;
 
 Auth::init();
 $config = require dirname(__DIR__) . '/config/config.php';
@@ -30,7 +31,24 @@ try {
     $mapLocations = (new \App\MapLocationRepository())->getAll();
 } catch (\Throwable $e) { }
 
-$pageTitle = 'Главная';
+$pageTitle = 'Тату-студия — мастера, работы и запись';
+$rawDesc = Settings::get('site_description', '');
+if ($rawDesc === '' || $rawDesc === 'Социальная платформа мастеров.') {
+    $rawDesc = 'Тату-студия: портфолио мастеров, отзывы клиентов и онлайн-запись на сеанс.';
+}
+$pageDescription = Seo::metaSnippet($rawDesc);
+$homeCanon = [];
+if ($page > 1) {
+    $homeCanon['page'] = $page;
+}
+$canonicalUrl = Seo::absoluteUrl($homeCanon === [] ? '' : 'index.php', $homeCanon, $config);
+$structuredData = [
+    '@context' => 'https://schema.org',
+    '@type' => 'TattooParlor',
+    'name' => $siteName,
+    'url' => $canonicalUrl,
+    'description' => $pageDescription,
+];
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/home.php';
 require __DIR__ . '/../templates/layout/footer.php';

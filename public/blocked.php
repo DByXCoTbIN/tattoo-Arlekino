@@ -18,6 +18,7 @@ $siteName = \App\Settings::get('site_name', $config['site']['name']);
 $pageTitle = 'Аккаунт заблокирован';
 $bodyClass = 'blocked-page';
 $user = $bannedUser;
+$pageRobots = 'noindex, nofollow';
 require __DIR__ . '/../templates/layout/header.php';
 require __DIR__ . '/../templates/blocked.php';
 require __DIR__ . '/../templates/layout/footer.php';
