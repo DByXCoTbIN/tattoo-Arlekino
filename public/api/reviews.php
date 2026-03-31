@@ -20,7 +20,7 @@ $config = require dirname(__DIR__, 2) . '/config/config.php';
 $base = defined('BASE_PATH') ? rtrim(BASE_PATH, '/') . '/' : '/';
 
 $userRepo = new UserRepo();
-$master = $userRepo->getMasterProfile($masterId, true);
+$master = $userRepo->getMasterProfile($masterId, true, true);
 if (!$master) {
     http_response_code(404);
     echo json_encode(['ok' => false, 'error' => 'Master not found']);

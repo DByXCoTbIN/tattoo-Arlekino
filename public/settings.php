@@ -30,7 +30,11 @@ $schedule = $bookingRepo->getSchedule((int)$user['id']) ?? [
     'work_start' => '10:00:00',
     'work_end' => '18:00:00',
     'slot_duration' => 60,
+    'off_weekdays' => [],
 ];
+if (!isset($schedule['off_weekdays']) || !is_array($schedule['off_weekdays'])) {
+    $schedule['off_weekdays'] = [];
+}
 
 $message = '';
 $error = '';
@@ -135,10 +139,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $workEnd = preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $workEnd) ? (strlen($workEnd) === 5 ? $workEnd . ':00' : $workEnd) : '18:00:00';
         $maxHours = $bookingRepo->getWorkDurationHours($workStart, $workEnd);
         $slotDuration = max(1, min($maxHours, 1));
-        $bookingRepo->saveSchedule((int)$user['id'], $workStart, $workEnd, $slotDuration);
+        $offDays = array_map('intval', $_POST['off_weekday'] ?? []);
+        $offDays = array_values(array_unique(array_filter($offDays, static fn (int $n): bool => $n >= 1 && $n <= 7)));
+        sort($offDays);
+        $bookingRepo->saveSchedule((int)$user['id'], $workStart, $workEnd, $slotDuration, json_encode($offDays));
         $message = 'Расписание сохранено.';
         $schedule = $bookingRepo->getSchedule((int)$user['id']) ?? $schedule;
     }
+    if ($action === 'add_day_off') {
+        $d = trim($_POST['off_date'] ?? '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && $bookingRepo->addDayOff((int)$user['id'], $d)) {
+            $message = 'Дата добавлена в выходные.';
+        } else {
+            $error = 'Укажите корректную дату.';
+        }
+    }
+    if ($action === 'remove_day_off') {
+        $d = trim($_POST['off_date'] ?? '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+            $bookingRepo->removeDayOff((int)$user['id'], $d);
+            $message = 'Дата убрана из выходных.';
+        }
+    }
+    if ($action === 'save_profile_visibility') {
+        $userRepo->setProfileHiddenByMaster((int)$user['id'], !empty($_POST['profile_hidden']));
+        $message = 'Настройки видимости профиля сохранены.';
+        $master = $userRepo->getMasterProfile((int)$user['id'], false);
+    }
+}
+
+$dayOffDates = [];
+try {
+    $dayOffDates = $bookingRepo->listDayOffsFrom((int)$user['id'], date('Y-m-d'));
+} catch (\Throwable $e) {
 }
 
 $pageTitle = 'Настройки профиля';

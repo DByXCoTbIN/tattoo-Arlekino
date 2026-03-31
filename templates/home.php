@@ -10,8 +10,16 @@ $sectionServicesTitle = \App\Settings::get('section_services_title', 'Услуг
 $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас найти');
 ?>
 <section class="hero-studio" aria-labelledby="hero-heading">
-    <h2 id="hero-heading" class="tagline"><?= htmlspecialchars($heroTitle) ?></h2>
-    <p class="site-desc"><?= htmlspecialchars($heroTagline) ?></p>
+    <div class="hero-studio__content">
+        <h2 id="hero-heading" class="tagline"><?= htmlspecialchars($heroTitle) ?></h2>
+        <p class="site-desc"><?= htmlspecialchars($heroTagline) ?></p>
+    </div>
+    <div class="hero-scroll-indicator" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="7" y="3" width="10" height="18" rx="5" ry="5"></rect>
+            <line x1="12" y1="7" x2="12" y2="11"></line>
+        </svg>
+    </div>
 </section>
 
 <?php if (!empty($services)): ?>
@@ -66,12 +74,12 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
 <a href="<?= htmlspecialchars($root . 'masters.php') ?>" class="link-all-masters">Все мастера</a>
 
 <?php if (!empty($mapLocations)): ?>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <h2 class="section-heading" style="margin-top: 48px;"><?= htmlspecialchars($sectionMapTitle) ?></h2>
 <div class="map-block card">
     <div class="map-block__inner">
-        <div class="map-block__map" id="studioMap"></div>
+        <div class="map-block__map map-block__map--yandex">
+            <iframe id="yandexMapWidget" title="Карта — Яндекс.Карты" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+        </div>
         <div class="map-block__addresses">
             <?php foreach ($mapLocations as $i => $ml): ?>
             <button type="button" class="map-address-btn" data-lat="<?= (float)$ml['lat'] ?>" data-lng="<?= (float)$ml['lng'] ?>" data-idx="<?= $i ?>">
@@ -85,33 +93,37 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
     </div>
 </div>
 <script>
-(function(){
-    var locations = <?= json_encode(array_map(function($m){ return ['lat'=>(float)$m['lat'],'lng'=>(float)$m['lng'],'title'=>$m['title']??'','address'=>$m['address']??'']; }, $mapLocations)) ?>;
-    if (locations.length === 0) return;
-    var center = { lat: locations[0].lat, lng: locations[0].lng };
-    if (locations.length > 1) {
-        center.lat = locations.reduce(function(s,l){ return s + l.lat; }, 0) / locations.length;
-        center.lng = locations.reduce(function(s,l){ return s + l.lng; }, 0) / locations.length;
+(function () {
+    var locations = <?= json_encode(array_map(function ($m) {
+        return ['lat' => (float) $m['lat'], 'lng' => (float) $m['lng'], 'title' => $m['title'] ?? '', 'address' => $m['address'] ?? ''];
+    }, $mapLocations)) ?>;
+    if (!locations.length) return;
+
+    function yandexWidgetUrl(focusIndex) {
+        var z = locations.length > 1 ? 12 : 14;
+        var centerLng, centerLat;
+        if (focusIndex != null && locations[focusIndex]) {
+            centerLng = locations[focusIndex].lng;
+            centerLat = locations[focusIndex].lat;
+            z = 16;
+        } else {
+            centerLng = locations.reduce(function (s, l) { return s + l.lng; }, 0) / locations.length;
+            centerLat = locations.reduce(function (s, l) { return s + l.lat; }, 0) / locations.length;
+        }
+        var pt = locations.map(function (l) {
+            return l.lng + ',' + l.lat + ',pm2rdm';
+        }).join('~');
+        return 'https://yandex.ru/map-widget/v1/?ll=' + centerLng + ',' + centerLat + '&z=' + z + '&l=map&pt=' + pt;
     }
-    var mapEl = document.getElementById('studioMap');
-    if (!mapEl) return;
-    var map = L.map('studioMap').setView([center.lat, center.lng], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
-    var markers = [];
-    locations.forEach(function(loc, i){
-        var m = L.marker([loc.lat, loc.lng]).addTo(map);
-        var popup = (loc.title ? '<strong>'+loc.title+'</strong><br>' : '') + (loc.address || '').replace(/\n/g,'<br>');
-        if (popup) m.bindPopup(popup);
-        markers.push(m);
-    });
-    if (locations.length > 1) map.fitBounds(markers.map(function(m){ return m.getLatLng(); }));
-    document.querySelectorAll('.map-address-btn').forEach(function(btn, i){
-        btn.addEventListener('click', function(){
-            var lat = parseFloat(btn.getAttribute('data-lat'));
-            var lng = parseFloat(btn.getAttribute('data-lng'));
-            map.flyTo([lat, lng], 16, { duration: 0.5 });
-            if (markers[i]) markers[i].openPopup();
-            document.querySelectorAll('.map-address-btn').forEach(function(b){ b.classList.remove('is-active'); });
+
+    var iframe = document.getElementById('yandexMapWidget');
+    if (!iframe) return;
+    iframe.src = yandexWidgetUrl(null);
+
+    document.querySelectorAll('.map-address-btn').forEach(function (btn, i) {
+        btn.addEventListener('click', function () {
+            iframe.src = yandexWidgetUrl(i);
+            document.querySelectorAll('.map-address-btn').forEach(function (b) { b.classList.remove('is-active'); });
             btn.classList.add('is-active');
         });
     });
@@ -248,6 +260,24 @@ $sectionMapTitle = \App\Settings::get('section_map_title', 'Как нас най
     var next = document.querySelector('.carousel-btn.next');
     if (track && prev) prev.addEventListener('click', function() { track.scrollBy({ left: -304, behavior: 'smooth' }); });
     if (track && next) next.addEventListener('click', function() { track.scrollBy({ left: 304, behavior: 'smooth' }); });
+
+    var hero = document.querySelector('.hero-studio');
+    if (hero && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && window.innerWidth > 900) {
+        var ticking = false;
+        var updateHeroParallax = function () {
+            var rect = hero.getBoundingClientRect();
+            var y = Math.max(-48, Math.min(48, rect.top * -0.18));
+            hero.style.setProperty('--hero-parallax-y', y.toFixed(2) + 'px');
+            ticking = false;
+        };
+        updateHeroParallax();
+        window.addEventListener('scroll', function () {
+            if (ticking) return;
+            ticking = true;
+            window.requestAnimationFrame(updateHeroParallax);
+        }, { passive: true });
+        window.addEventListener('resize', updateHeroParallax);
+    }
 
     var carouselInterval = setInterval(function() {
         if (!track || items.length === 0) return;

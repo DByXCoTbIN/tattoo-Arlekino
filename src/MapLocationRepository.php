@@ -15,16 +15,39 @@ class MapLocationRepository
         $this->pdo = Database::get();
     }
 
+    /** Ссылка на Яндекс.Карты с заданными координатами (для хранения в БД). */
+    public static function buildYandexMapUrlFromCoords(float $lat, float $lng): string
+    {
+        return 'https://yandex.ru/maps/?ll=' . $lng . ',' . $lat . '&z=16&pt=' . $lng . ',' . $lat . ',pm2rdm';
+    }
+
     /**
-     * Извлекает координаты из ссылки Google Maps, Yandex Maps или вида "lat,lng".
+     * Ссылка допустима для сохранения: Яндекс.Карты или явные координаты.
+     */
+    public static function isAllowedMapSource(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return false;
+        }
+        if (preg_match('/^(-?\d+\.?\d*)\s*[,;]\s*(-?\d+\.?\d*)$/', $url)) {
+            return true;
+        }
+        return (bool) preg_match('#https?://([a-z0-9.-]+\.)?yandex\.(ru|com|by|kz)/maps#i', $url);
+    }
+
+    /**
+     * Извлекает координаты из ссылки Яндекс.Карт или строки "lat,lng" (широта, долгота).
      * Возвращает ['lat' => float, 'lng' => float] или null при ошибке.
      */
     public static function parseCoordinatesFromUrl(string $url): ?array
     {
         $url = trim($url);
-        if ($url === '') return null;
+        if ($url === '') {
+            return null;
+        }
 
-        // Прямой ввод координат: 55.7558,37.6173 или 55.7558, 37.6173
+        // Прямой ввод: 55.7558,37.6173 (широта, долгота)
         if (preg_match('/^(-?\d+\.?\d*)\s*[,;]\s*(-?\d+\.?\d*)$/', $url, $m)) {
             $lat = (float) $m[1];
             $lng = (float) $m[2];
@@ -33,25 +56,11 @@ class MapLocationRepository
             }
         }
 
-        // Google Maps: @lat,lng или /@lat,lng,zoom
-        if (preg_match('/@(-?\d+\.?\d*),(-?\d+\.?\d*)/', $url, $m)) {
-            $lat = (float) $m[1];
-            $lng = (float) $m[2];
-            if ($lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180) {
-                return ['lat' => $lat, 'lng' => $lng];
-            }
+        if (!self::isAllowedMapSource($url)) {
+            return null;
         }
 
-        // Google Maps: q=lat,lng или q=lat,lng
-        if (preg_match('/[?&]q=(-?\d+\.?\d*)[,%2C](-?\d+\.?\d*)/', $url, $m)) {
-            $lat = (float) $m[1];
-            $lng = (float) $m[2];
-            if ($lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180) {
-                return ['lat' => $lat, 'lng' => $lng];
-            }
-        }
-
-        // Yandex Maps: ll=lng,lat (порядок lon,lat!)
+        // Яндекс: ll=долгота,широта
         if (preg_match('/[?&]ll=(-?\d+\.?\d*)[,%2C](-?\d+\.?\d*)/', $url, $m)) {
             $lng = (float) $m[1];
             $lat = (float) $m[2];
@@ -60,7 +69,7 @@ class MapLocationRepository
             }
         }
 
-        // Yandex: pt=lng,lat
+        // Яндекс: pt=долгота,широта (возможны хвосты через ~)
         if (preg_match('/[?&]pt=(-?\d+\.?\d*)[,%2C](-?\d+\.?\d*)/', $url, $m)) {
             $lng = (float) $m[1];
             $lat = (float) $m[2];

@@ -46,6 +46,28 @@ $logoSize = max(48, min(200, $logoSize));
 $logoSizeHeader = max(20, min(82, (int)round($logoSize * 0.36)));
 $logoCssVars = '--logo-size-banner:' . $logoSize . 'px;--logo-size-header:' . $logoSizeHeader . 'px;';
 
+$logoPath = \App\Settings::get('site_logo', '');
+$logoRemoveBg = \App\Settings::get('logo_remove_bg', '0') === '1';
+
+$faviconColorAllowed = ['auto', 'gold', 'white', 'accent', 'silver', 'black', 'emerald', 'azure', 'violet'];
+$faviconColorSetting = \App\Settings::get('favicon_color', 'auto');
+if (!in_array($faviconColorSetting, $faviconColorAllowed, true)) {
+    $faviconColorSetting = 'auto';
+}
+$faviconFilterCssMap = [
+    'auto' => 'none',
+    'gold' => 'brightness(0) saturate(100%) invert(72%) sepia(35%) saturate(400%) hue-rotate(8deg)',
+    'white' => 'brightness(0) invert(1)',
+    'accent' => 'brightness(0) saturate(100%) invert(12%) sepia(90%) saturate(600%) hue-rotate(315deg)',
+    'silver' => 'brightness(0) saturate(100%) invert(88%) sepia(4%) saturate(200%) hue-rotate(170deg)',
+    'black' => 'brightness(0) saturate(100%) invert(8%) sepia(8%) saturate(150%) hue-rotate(180deg)',
+    'emerald' => 'brightness(0) saturate(100%) invert(37%) sepia(52%) saturate(880%) hue-rotate(118deg)',
+    'azure' => 'brightness(0) saturate(100%) invert(50%) sepia(73%) saturate(620%) hue-rotate(171deg)',
+    'violet' => 'brightness(0) saturate(100%) invert(29%) sepia(40%) saturate(1120%) hue-rotate(253deg)',
+];
+$faviconFilterCss = $faviconFilterCssMap[$faviconColorSetting] ?? 'none';
+$faviconUseCanvas = ($logoPath !== '') && ($logoRemoveBg || $faviconColorSetting !== 'auto');
+
 $notificationCount = 0;
 $notificationItems = [];
 if ($user && isset($user['id'])) {
@@ -62,6 +84,108 @@ if ($user && isset($user['id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= htmlspecialchars($pageTitle ?? 'Главная') ?> — <?= htmlspecialchars($siteName) ?></title>
+    <?php if ($logoPath !== ''):
+        $faviconExt = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+        $faviconMime = match ($faviconExt) {
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'jpg', 'jpeg' => 'image/jpeg',
+            default => 'image/png',
+        };
+        $faviconHref = $root . ltrim($logoPath, '/');
+        ?>
+    <?php if (!$faviconUseCanvas): ?>
+    <link rel="icon" type="<?= htmlspecialchars($faviconMime) ?>" href="<?= htmlspecialchars($faviconHref) ?>">
+    <link rel="apple-touch-icon" href="<?= htmlspecialchars($faviconHref) ?>">
+    <?php else: ?>
+    <script>
+    (function () {
+        var u = <?= json_encode($faviconHref, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE) ?>;
+        var fallbackMime = <?= json_encode($faviconMime, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE) ?>;
+        var removeBg = <?= $logoRemoveBg ? 'true' : 'false' ?>;
+        var filterCss = <?= json_encode($faviconFilterCss, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_UNESCAPED_UNICODE) ?>;
+        function setFaviconLinks(href, mime) {
+            [['icon', mime], ['apple-touch-icon', null]].forEach(function (pair) {
+                var rel = pair[0], type = pair[1];
+                var el = document.querySelector('link[rel="' + rel + '"]');
+                if (!el) {
+                    el = document.createElement('link');
+                    el.rel = rel;
+                    document.head.appendChild(el);
+                }
+                el.href = href;
+                if (type) el.type = type; else el.removeAttribute('type');
+            });
+        }
+        function removeLightBackground(ctx, w, h) {
+            var imageData;
+            try {
+                imageData = ctx.getImageData(0, 0, w, h);
+            } catch (e) {
+                return false;
+            }
+            var data = imageData.data;
+            for (var i = 0; i < data.length; i += 4) {
+                var r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+                if (a === 0) continue;
+                var max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max - min, bright = (r + g + b) / 3;
+                if (bright >= 244 && sat <= 18) {
+                    data[i + 3] = 0;
+                    continue;
+                }
+                if (bright >= 226 && sat <= 32) {
+                    var fade = (bright - 226) / 28;
+                    var alphaMul = 1 - Math.max(0, Math.min(1, fade));
+                    data[i + 3] = Math.round(a * alphaMul);
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            return true;
+        }
+        function finish(canvas) {
+            var w = canvas.width, h = canvas.height;
+            if (filterCss === 'none') {
+                setFaviconLinks(canvas.toDataURL('image/png'), 'image/png');
+                return;
+            }
+            var out = document.createElement('canvas');
+            out.width = w;
+            out.height = h;
+            var octx = out.getContext('2d');
+            if (!octx || typeof octx.filter === 'undefined') {
+                setFaviconLinks(canvas.toDataURL('image/png'), 'image/png');
+                return;
+            }
+            octx.filter = filterCss;
+            octx.drawImage(canvas, 0, 0);
+            setFaviconLinks(out.toDataURL('image/png'), 'image/png');
+        }
+        var im = new Image();
+        im.onload = function () {
+            if (!im.naturalWidth || !im.naturalHeight) {
+                setFaviconLinks(u, fallbackMime);
+                return;
+            }
+            var c = document.createElement('canvas');
+            c.width = im.naturalWidth;
+            c.height = im.naturalHeight;
+            var ctx = c.getContext('2d', { willReadFrequently: true });
+            if (!ctx) {
+                setFaviconLinks(u, fallbackMime);
+                return;
+            }
+            ctx.drawImage(im, 0, 0);
+            if (removeBg) {
+                removeLightBackground(ctx, c.width, c.height);
+            }
+            finish(c);
+        };
+        im.onerror = function () { setFaviconLinks(u, fallbackMime); };
+        im.src = u;
+    })();
+    </script>
+    <?php endif; ?>
+    <?php endif; ?>
     <?php if (!empty($pageDescription)): ?>
     <meta name="description" content="<?= htmlspecialchars($pageDescription) ?>">
     <?php endif; ?>
@@ -124,8 +248,6 @@ if ($user && isset($user['id'])) {
 <?php endif; ?>
 <?php if ($bodyClass !== 'admin-page'): ?>
 <?php
-$logoPath = \App\Settings::get('site_logo', '');
-$logoRemoveBg = \App\Settings::get('logo_remove_bg', '0') === '1';
 $allowedLogoColors = ['auto', 'gold', 'white', 'accent', 'silver', 'black', 'emerald', 'azure', 'violet'];
 $legacyLogoColor = \App\Settings::get('logo_color', 'gold');
 $logoColorDark = \App\Settings::get('logo_color_dark', $legacyLogoColor ?: 'gold');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Repositories\UserRepo;
 use PDO;
 
 class ServiceRepository
@@ -55,6 +56,7 @@ class ServiceRepository
             LEFT JOIN master_profiles mp ON mp.user_id = u.id
             WHERE ms.service_id = ? AND u.is_banned = 0 AND u.role IN ('master','admin')
               AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
+              AND (" . UserRepo::sqlMasterVisibleOnSite() . ")
             ORDER BY " . $orderBy . "
         ");
         $stmt->execute([$serviceId]);

@@ -47,6 +47,10 @@ if (!$isOwner && ($master['role'] ?? '') === 'master' && empty($master['is_verif
     header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/masters.php');
     exit;
 }
+if (!$isOwner && !Auth::isAdmin() && !UserRepo::isEffectiveProfilePublic($master)) {
+    header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/masters.php');
+    exit;
+}
 
 $ratingRepo->recalcMasterRating($masterId);
 $master = $userRepo->getMasterProfile($masterId, false);

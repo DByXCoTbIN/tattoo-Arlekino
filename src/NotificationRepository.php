@@ -69,7 +69,7 @@ class NotificationRepository
     }
 
     /** @deprecated Используйте add(null, $type, ...) для админских уведомлений */
-    public function getUnread(string $type = null, int $limit = 50): array
+    public function getUnread(?string $type = null, int $limit = 50): array
     {
         $sql = "SELECT n.*, u.full_name, u.email FROM notifications n LEFT JOIN users u ON u.id = n.from_user_id WHERE n.is_read = 0";
         if ($type !== null) {

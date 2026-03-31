@@ -11,6 +11,62 @@ class UserRepo
 {
     private PDO $pdo;
 
+    private static ?bool $masterProfileVisibilityColumnsOk = null;
+
+    public static function masterProfileVisibilityColumnsExist(): bool
+    {
+        if (self::$masterProfileVisibilityColumnsOk === true) {
+            return true;
+        }
+        $pdo = Database::get();
+        try {
+            if (Database::isSqlite()) {
+                $stmt = $pdo->query('PRAGMA table_info(master_profiles)');
+                $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                $names = array_column($rows, 'name');
+                $ok = in_array('profile_hidden_by_master', $names, true)
+                    && in_array('admin_profile_visibility', $names, true);
+                if ($ok) {
+                    self::$masterProfileVisibilityColumnsOk = true;
+                }
+                return $ok;
+            }
+            $pdo->query('SELECT profile_hidden_by_master, admin_profile_visibility FROM master_profiles LIMIT 0');
+            self::$masterProfileVisibilityColumnsOk = true;
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Пытается дозаполнить недостающие колонки видимости (если миграция применена частично). */
+    private function ensureMasterProfileVisibilityColumns(): void
+    {
+        if (self::masterProfileVisibilityColumnsExist()) {
+            return;
+        }
+        try {
+            if (Database::isSqlite()) {
+                try {
+                    $this->pdo->exec("ALTER TABLE master_profiles ADD COLUMN profile_hidden_by_master INTEGER NOT NULL DEFAULT 0");
+                } catch (\Throwable $e) { }
+                try {
+                    $this->pdo->exec("ALTER TABLE master_profiles ADD COLUMN admin_profile_visibility TEXT");
+                } catch (\Throwable $e) { }
+            } else {
+                try {
+                    $this->pdo->exec("ALTER TABLE master_profiles ADD COLUMN profile_hidden_by_master TINYINT(1) NOT NULL DEFAULT 0");
+                } catch (\Throwable $e) { }
+                try {
+                    $this->pdo->exec("ALTER TABLE master_profiles ADD COLUMN admin_profile_visibility VARCHAR(20) NULL DEFAULT NULL");
+                } catch (\Throwable $e) { }
+            }
+        } catch (\Throwable $e) { }
+        if (self::masterProfileVisibilityColumnsExist()) {
+            self::$masterProfileVisibilityColumnsOk = true;
+        }
+    }
+
     public function __construct()
     {
         $this->pdo = Database::get();
@@ -163,6 +219,39 @@ class UserRepo
         $this->pdo->prepare("UPDATE users SET " . implode(', ', $set) . " WHERE id = ?")->execute($vals);
     }
 
+    /**
+     * Условие SQL: профиль виден на сайте (списки, запись).
+     * ВАЖНО: если мастер скрыл профиль, он не показывается нигде публично
+     * до тех пор, пока сам мастер не включит видимость обратно.
+     */
+    public static function sqlMasterVisibleOnSite(): string
+    {
+        if (!self::masterProfileVisibilityColumnsExist()) {
+            return '1=1';
+        }
+        $eff = "(CASE WHEN COALESCE(mp.profile_hidden_by_master, 0) = 1 THEN 0
+             WHEN COALESCE(mp.admin_profile_visibility, '') = 'force_hide' THEN 0
+             WHEN COALESCE(mp.admin_profile_visibility, '') = 'force_show' THEN 1
+             ELSE 1 END)";
+        return "(" . $eff . " = 1)";
+    }
+
+    /** Эффективная публичная видимость профиля по строке (после JOIN master_profiles). */
+    public static function isEffectiveProfilePublic(array $masterRow): bool
+    {
+        if (((int) ($masterRow['profile_hidden_by_master'] ?? 0)) === 1) {
+            return false;
+        }
+        $admin = trim((string) ($masterRow['admin_profile_visibility'] ?? ''));
+        if ($admin === 'force_hide') {
+            return false;
+        }
+        if ($admin === 'force_show') {
+            return true;
+        }
+        return ((int) ($masterRow['profile_hidden_by_master'] ?? 0)) === 0;
+    }
+
     /** Список мастеров для публичного отображения: верифицированные мастера и все админы (админы показываются всегда). */
     public function getMasters(int $limit = 50, int $offset = 0, string $sort = 'reviews'): array
     {
@@ -183,6 +272,7 @@ class UserRepo
             LEFT JOIN master_profiles mp ON mp.user_id = u.id
             WHERE u.role IN ('master', 'admin') AND u.is_banned = 0
               AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
+              AND (" . self::sqlMasterVisibleOnSite() . ")
             ORDER BY " . $orderBy . "
             LIMIT " . $limit . " OFFSET " . $offset . "
         ");
@@ -199,6 +289,7 @@ class UserRepo
             LEFT JOIN master_profiles mp ON mp.user_id = u.id
             WHERE u.role IN ('master', 'admin') AND u.is_banned = 0
               AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')
+              AND (" . self::sqlMasterVisibleOnSite() . ")
             ORDER BY u.id
         ");
         if (!$stmt) {
@@ -210,27 +301,38 @@ class UserRepo
     /**
      * Профиль мастера.
      * @param bool $verifiedOnly при true — только верифицированные и админы (админы показываются всегда)
+     * @param bool $publicProfileOnly при true — только с публично видимым профилем (для записи и публичных API)
      */
-    public function getMasterProfile(int $userId, bool $verifiedOnly = false): ?array
+    public function getMasterProfile(int $userId, bool $verifiedOnly = false, bool $publicProfileOnly = false): ?array
     {
         $verifiedCond = $verifiedOnly ? " AND (COALESCE(mp.is_verified, 0) = 1 OR u.role = 'admin')" : "";
+        $publicCond = $publicProfileOnly ? " AND (" . self::sqlMasterVisibleOnSite() . ")" : "";
+        $mpVis = self::masterProfileVisibilityColumnsExist()
+            ? ', mp.profile_hidden_by_master, mp.admin_profile_visibility'
+            : '';
         try {
             $stmt = $this->pdo->prepare("
-                SELECT u.*, mp.bio, mp.specialization, mp.phone, mp.instagram, mp.vk, mp.telegram, mp.youtube, mp.max_link, mp.rating_sum, mp.rating_count, mp.is_verified, mp.banner_path,
+                SELECT u.*, mp.bio, mp.specialization, mp.phone, mp.instagram, mp.vk, mp.telegram, mp.youtube, mp.max_link, mp.rating_sum, mp.rating_count, mp.is_verified, mp.banner_path
+                       " . $mpVis . ",
                        CASE WHEN mp.rating_count > 0 THEN ROUND(mp.rating_sum / mp.rating_count, 1) ELSE 0 END AS rating_avg
                 FROM users u
                 LEFT JOIN master_profiles mp ON mp.user_id = u.id
-                WHERE u.id = ? AND u.role IN ('master', 'admin') AND u.is_banned = 0" . $verifiedCond . "
+                WHERE u.id = ? AND u.role IN ('master', 'admin') AND u.is_banned = 0" . $verifiedCond . $publicCond . "
             ");
             $stmt->execute([$userId]);
-            return $stmt->fetch() ?: null;
+            $row = $stmt->fetch() ?: null;
+            if ($row !== null && $mpVis === '') {
+                $row['profile_hidden_by_master'] = 0;
+                $row['admin_profile_visibility'] = null;
+            }
+            return $row;
         } catch (\Throwable $e) {
             $stmt = $this->pdo->prepare("
                 SELECT u.*, mp.bio, mp.specialization, mp.rating_sum, mp.rating_count, mp.is_verified,
                        CASE WHEN mp.rating_count > 0 THEN ROUND(mp.rating_sum / mp.rating_count, 1) ELSE 0 END AS rating_avg
                 FROM users u
                 LEFT JOIN master_profiles mp ON mp.user_id = u.id
-                WHERE u.id = ? AND u.role IN ('master', 'admin') AND u.is_banned = 0" . $verifiedCond . "
+                WHERE u.id = ? AND u.role IN ('master', 'admin') AND u.is_banned = 0" . $verifiedCond . $publicCond . "
             ");
             $stmt->execute([$userId]);
             $row = $stmt->fetch() ?: null;
@@ -242,6 +344,20 @@ class UserRepo
                 $row['telegram'] = $row['telegram'] ?? null;
                 $row['youtube'] = $row['youtube'] ?? null;
                 $row['max_link'] = $row['max_link'] ?? null;
+                $row['profile_hidden_by_master'] = 0;
+                $row['admin_profile_visibility'] = null;
+                // Даже если основной SELECT упал на старых колонках, дочитываем флаги видимости отдельно.
+                if (self::masterProfileVisibilityColumnsExist()) {
+                    try {
+                        $vStmt = $this->pdo->prepare("SELECT COALESCE(profile_hidden_by_master, 0) AS profile_hidden_by_master, admin_profile_visibility FROM master_profiles WHERE user_id = ?");
+                        $vStmt->execute([$userId]);
+                        $vRow = $vStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                        if ($vRow) {
+                            $row['profile_hidden_by_master'] = (int)($vRow['profile_hidden_by_master'] ?? 0);
+                            $row['admin_profile_visibility'] = $vRow['admin_profile_visibility'] ?? null;
+                        }
+                    } catch (\Throwable $e2) { }
+                }
             }
             return $row;
         }
@@ -293,22 +409,33 @@ class UserRepo
     {
         $limit = max(1, min(500, $limit));
         $offset = max(0, $offset);
+        $mpVis = self::masterProfileVisibilityColumnsExist()
+            ? ', mp.profile_hidden_by_master, mp.admin_profile_visibility'
+            : '';
         if ($ensureFirstUserId !== null && $ensureFirstUserId > 0) {
             $stmt = $this->pdo->prepare("
-                SELECT u.*, mp.rating_count FROM users u
+                SELECT u.*, mp.rating_count, mp.is_verified" . $mpVis . " FROM users u
                 LEFT JOIN master_profiles mp ON mp.user_id = u.id
                 ORDER BY (u.id = ?) DESC, u.created_at DESC LIMIT " . $limit . " OFFSET " . $offset . "
             ");
             $stmt->execute([$ensureFirstUserId]);
         } else {
             $stmt = $this->pdo->prepare("
-                SELECT u.*, mp.rating_count FROM users u
+                SELECT u.*, mp.rating_count, mp.is_verified" . $mpVis . " FROM users u
                 LEFT JOIN master_profiles mp ON mp.user_id = u.id
                 ORDER BY u.created_at DESC LIMIT " . $limit . " OFFSET " . $offset . "
             ");
             $stmt->execute([]);
         }
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        if ($mpVis === '') {
+            foreach ($rows as &$r) {
+                $r['profile_hidden_by_master'] = 0;
+                $r['admin_profile_visibility'] = null;
+            }
+            unset($r);
+        }
+        return $rows;
     }
 
     public function setBanned(int $userId, bool $banned, ?string $reason = null): void
@@ -333,6 +460,44 @@ class UserRepo
         } else {
             $this->pdo->prepare("INSERT INTO master_profiles (user_id, is_verified) VALUES (?, ?) ON DUPLICATE KEY UPDATE is_verified = VALUES(is_verified)")->execute([$userId, $v]);
         }
+    }
+
+    public function setProfileHiddenByMaster(int $userId, bool $hidden): void
+    {
+        $h = $hidden ? 1 : 0;
+        $this->ensureMasterProfileVisibilityColumns();
+        try {
+            if (Database::isSqlite()) {
+                $this->pdo->prepare("INSERT INTO master_profiles (user_id, profile_hidden_by_master) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET profile_hidden_by_master = excluded.profile_hidden_by_master")->execute([$userId, $h]);
+            } else {
+                $this->pdo->prepare("INSERT INTO master_profiles (user_id, profile_hidden_by_master) VALUES (?, ?) ON DUPLICATE KEY UPDATE profile_hidden_by_master = VALUES(profile_hidden_by_master)")->execute([$userId, $h]);
+            }
+        } catch (\Throwable $e) { }
+    }
+
+    /** null — снять override; force_show / force_hide */
+    public function setAdminProfileVisibilityOverride(int $userId, ?string $mode): void
+    {
+        $mode = $mode === null || $mode === '' || $mode === 'default' ? null : $mode;
+        if ($mode !== null && !in_array($mode, ['force_show', 'force_hide'], true)) {
+            return;
+        }
+        $this->ensureMasterProfileVisibilityColumns();
+        try {
+            if (Database::isSqlite()) {
+                if ($mode === null) {
+                    $this->pdo->prepare("UPDATE master_profiles SET admin_profile_visibility = NULL WHERE user_id = ?")->execute([$userId]);
+                } else {
+                    $this->pdo->prepare("INSERT INTO master_profiles (user_id, admin_profile_visibility) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET admin_profile_visibility = excluded.admin_profile_visibility")->execute([$userId, $mode]);
+                }
+            } else {
+                if ($mode === null) {
+                    $this->pdo->prepare("UPDATE master_profiles SET admin_profile_visibility = NULL WHERE user_id = ?")->execute([$userId]);
+                } else {
+                    $this->pdo->prepare("INSERT INTO master_profiles (user_id, admin_profile_visibility) VALUES (?, ?) ON DUPLICATE KEY UPDATE admin_profile_visibility = VALUES(admin_profile_visibility)")->execute([$userId, $mode]);
+                }
+            }
+        } catch (\Throwable $e) { }
     }
 
     public function setRole(int $userId, string $role): void
@@ -389,6 +554,53 @@ class UserRepo
             return $stmt->fetchAll();
         } catch (\Throwable $e) {
             return [];
+        }
+    }
+
+    /**
+     * Полное удаление пользователя и связанных данных (через CASCADE и явные DELETE).
+     * Нельзя удалить последнего администратора.
+     */
+    public function deleteUser(int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+        $stmt = $this->pdo->prepare('SELECT role FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return false;
+        }
+        if (($row['role'] ?? '') === 'admin') {
+            $cnt = (int) $this->pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+            if ($cnt <= 1) {
+                return false;
+            }
+        }
+
+        $this->pdo->beginTransaction();
+        try {
+            foreach (
+                [
+                    'DELETE FROM notifications WHERE from_user_id = ? OR user_id = ?',
+                    'DELETE FROM complaints WHERE from_user_id = ? OR about_user_id = ?',
+                ] as $sql
+            ) {
+                try {
+                    $this->pdo->prepare($sql)->execute([$userId, $userId]);
+                } catch (\Throwable $e) {
+                    // таблица может отсутствовать в старых схемах
+                }
+            }
+            $this->pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
+            $this->pdo->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return false;
         }
     }
 }

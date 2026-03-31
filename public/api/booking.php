@@ -41,7 +41,7 @@ if ($masterId <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
 }
 
 $userRepo = new UserRepo();
-$master = $userRepo->getMasterProfile($masterId, true);
+$master = $userRepo->getMasterProfile($masterId, true, true);
 if (!$master) {
     http_response_code(404);
     echo json_encode(['ok' => false, 'error' => 'Мастер не найден']);
@@ -58,8 +58,8 @@ if (!$schedule) {
 
 $id = $bookingRepo->createBookingRequest($masterId, (int)$user['id'], $date);
 if (!$id) {
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => 'Не удалось отправить запрос.']);
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'Эта дата недоступна для записи (выходной или прошедшая дата).']);
     exit;
 }
 

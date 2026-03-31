@@ -24,17 +24,28 @@ if (!$masterId) {
 $userRepo = new UserRepo();
 $ratingRepo = new RatingRepository();
 
-$master = $userRepo->getMasterProfile($masterId, true);
+$master = $userRepo->getMasterProfile($masterId, false);
 if (!$master) {
     header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/masters.php');
     exit;
 }
 
+$isOwnProfile = $user && (int)$user['id'] === $masterId;
+if (!$isOwnProfile && !Auth::isAdmin()) {
+    if (($master['role'] ?? '') === 'master' && empty($master['is_verified'])) {
+        header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/masters.php');
+        exit;
+    }
+    if (!UserRepo::isEffectiveProfilePublic($master)) {
+        header('Location: ' . (defined('BASE_PATH') ? BASE_PATH : '') . '/masters.php');
+        exit;
+    }
+}
+
 $ratingRepo->recalcMasterRating($masterId);
-$master = $userRepo->getMasterProfile($masterId, true);
+$master = $userRepo->getMasterProfile($masterId, false);
 
 $ratings = $ratingRepo->getForMaster($masterId, 100, true);
-$isOwnProfile = $user && (int)$user['id'] === $masterId;
 
 $pageTitle = 'Отзывы о мастере ' . $master['full_name'];
 $canonicalUrl = Seo::absoluteUrl('reviews.php', ['id' => $masterId], $config);

@@ -17,30 +17,19 @@ try {
 $isSqlite = $driver === 'sqlite';
 $sqlFile = $isSqlite ? $base . '/database/migration_v8_map_locations.sqlite.sql' : $base . '/database/migration_v8_map_locations.sql';
 $sql = file_get_contents($sqlFile);
+$sql = trim(preg_replace('/^\s*--[^\n]*$/m', '', $sql));
+$sql = trim($sql);
 
-function runStatement($pdo, $sql, $isSqlite) {
-    $sql = trim($sql);
-    if ($sql === '' || strpos($sql, '--') === 0) return true;
-    try {
-        $pdo->exec($sql);
-        echo "OK: " . substr(preg_replace('/\s+/', ' ', $sql), 0, 70) . "...\n";
-        return true;
-    } catch (PDOException $e) {
-        $msg = $e->getMessage();
-        if (preg_match('/Duplicate|already exists|duplicate column/i', $msg)) {
-            echo "Skip (exists): " . substr($sql, 0, 50) . "\n";
-            return true;
-        }
+try {
+    $pdo->exec($sql);
+    echo "OK: map_locations\n";
+} catch (PDOException $e) {
+    $msg = $e->getMessage();
+    if (preg_match('/Duplicate|already exists|duplicate column/i', $msg)) {
+        echo "Skip (already exists)\n";
+    } else {
         echo "Error: $msg\n";
-        return false;
+        exit(1);
     }
-}
-
-$statements = array_filter(preg_split('/;\s*[\r\n]+/', $sql));
-foreach ($statements as $s) {
-    $s = trim($s);
-    if ($s === '' || strpos($s, '--') === 0) continue;
-    if (substr($s, -1) !== ';') $s .= ';';
-    runStatement($pdo, $s, $isSqlite);
 }
 echo "Миграция v8 завершена.\n";

@@ -97,6 +97,42 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sess_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sess_expires ON sessions(expires_at);
 
+CREATE TABLE IF NOT EXISTS map_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL,
+    map_url TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ml_order ON map_locations(sort_order);
+
+CREATE TABLE IF NOT EXISTS master_schedule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    master_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    work_start TEXT NOT NULL DEFAULT '10:00:00',
+    work_end TEXT NOT NULL DEFAULT '18:00:00',
+    slot_duration INTEGER NOT NULL DEFAULT 60,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ms_master ON master_schedule(master_id);
+
+CREATE TABLE IF NOT EXISTS bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    master_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    booking_date TEXT NOT NULL,
+    slot_time TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(master_id, booking_date, slot_time)
+);
+CREATE INDEX IF NOT EXISTS idx_bookings_master_date ON bookings(master_id, booking_date);
+CREATE INDEX IF NOT EXISTS idx_bookings_client ON bookings(client_id);
+
 INSERT OR IGNORE INTO settings (key, value) VALUES ('site_name', 'АрлекинО');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('site_description', 'Социальная платформа мастеров в стиле цирка и готики');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('posts_per_page', '12');

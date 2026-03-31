@@ -144,6 +144,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $users = $userRepo->getAllForAdmin(200, 0, (int)$user['id']);
         }
     }
+    if ($action === 'admin_profile_visibility') {
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $mode = trim($_POST['visibility_mode'] ?? 'default');
+        if ($uid > 0 && in_array($mode, ['default', 'force_show', 'force_hide'], true)) {
+            $userRepo->setAdminProfileVisibilityOverride($uid, $mode === 'default' ? null : $mode);
+            $message = 'Видимость профиля на сайте обновлена.';
+            $redirectPage = 'users';
+            $users = $userRepo->getAllForAdmin(200, 0, (int)$user['id']);
+        }
+    }
+    if ($action === 'delete_user') {
+        $uid = (int)($_POST['user_id'] ?? 0);
+        if ($uid && $uid !== (int)$user['id']) {
+            if ($userRepo->deleteUser($uid)) {
+                $message = 'Пользователь удалён.';
+            } else {
+                $error = 'Не удалось удалить пользователя (последний администратор, ошибка БД или пользователь не найден).';
+            }
+            $redirectPage = 'users';
+            $users = $userRepo->getAllForAdmin(200, 0, (int)$user['id']);
+        }
+    }
     if ($action === 'settings') {
         Settings::set('site_name', trim($_POST['site_name'] ?? ''));
         Settings::set('site_description', trim($_POST['site_description'] ?? ''));
@@ -178,6 +200,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $logoSize = (int)($_POST['logo_size'] ?? 96);
         $logoSize = max(48, min(200, $logoSize));
         Settings::set('logo_size', (string)$logoSize);
+        $faviconColor = in_array($_POST['favicon_color'] ?? '', $allowedLogoColors, true) ? (string)$_POST['favicon_color'] : 'auto';
+        Settings::set('favicon_color', $faviconColor);
         $message = 'Настройки логотипа сохранены.';
         $redirectPage = 'site';
     }
@@ -266,18 +290,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (\Throwable $e) { $error = 'Ошибка: ' . $e->getMessage(); $redirectPage = 'content'; }
         }
     }
+    if ($action === 'save_yandex_maps_api_key') {
+        Settings::set('yandex_maps_api_key', trim($_POST['yandex_maps_api_key'] ?? ''));
+        $message = 'Ключ API Яндекс.Карт сохранён.';
+        $redirectPage = 'site';
+    }
     if ($action === 'add_map_location') {
         $title = trim($_POST['title'] ?? '');
         $address = trim($_POST['address'] ?? '');
         $mapUrl = trim($_POST['map_url'] ?? '');
-        $coords = MapLocationRepository::parseCoordinatesFromUrl($mapUrl);
+        $pickLatRaw = trim((string)($_POST['pick_lat'] ?? ''));
+        $pickLngRaw = trim((string)($_POST['pick_lng'] ?? ''));
+        $coords = null;
+        if ($pickLatRaw !== '' && $pickLngRaw !== '') {
+            $la = (float) str_replace(',', '.', $pickLatRaw);
+            $ln = (float) str_replace(',', '.', $pickLngRaw);
+            if (abs($la) <= 90 && abs($ln) <= 180) {
+                $coords = ['lat' => $la, 'lng' => $ln];
+            }
+        }
+        if ($coords === null) {
+            $coords = MapLocationRepository::parseCoordinatesFromUrl($mapUrl);
+        }
         if ($address !== '' && $coords) {
+            if ($mapUrl === '' || !MapLocationRepository::isAllowedMapSource($mapUrl)) {
+                $mapUrl = MapLocationRepository::buildYandexMapUrlFromCoords($coords['lat'], $coords['lng']);
+            }
             (new MapLocationRepository())->create($title, $address, $mapUrl, $coords['lat'], $coords['lng'], (int)($_POST['sort_order'] ?? 0));
             $message = 'Адрес добавлен.';
             $redirectPage = 'site';
             try { $mapLocations = (new MapLocationRepository())->getAll(); } catch (\Throwable $e) { }
         } else {
-            $error = $coords ? 'Заполните адрес.' : 'Не удалось извлечь координаты из ссылки. Вставьте ссылку Google Maps или Yandex Maps.';
+            if ($address === '') {
+                $error = 'Укажите адрес для отображения на сайте.';
+            } else {
+                $error = 'Укажите точку на карте кликом или вставьте ссылку/координаты Яндекс.Карт.';
+            }
             $redirectPage = 'site';
         }
     }
@@ -516,6 +564,10 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
     $currentLogoColorLight = Settings::get('logo_color_light', $legacyLogoColor ?: 'gold');
     if (!isset($logoColorOptions[$currentLogoColorDark])) $currentLogoColorDark = 'gold';
     if (!isset($logoColorOptions[$currentLogoColorLight])) $currentLogoColorLight = 'gold';
+    $currentFaviconColor = Settings::get('favicon_color', 'auto');
+    if (!isset($logoColorOptions[$currentFaviconColor])) {
+        $currentFaviconColor = 'auto';
+    }
     $logoPreviewClassDark = 'site-logo-img logo-preview-color logo-color-' . $currentLogoColorDark;
     $logoPreviewClassLight = 'site-logo-img logo-preview-color logo-color-' . $currentLogoColorLight;
     if (Settings::get('logo_remove_bg', '0') === '1') {
@@ -562,6 +614,15 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
                     <option value="<?= htmlspecialchars($colorKey) ?>" <?= $currentLogoColorLight === $colorKey ? 'selected' : '' ?>><?= htmlspecialchars($colorLabel) ?></option>
                 <?php endforeach; ?>
             </select>
+        </div>
+        <div class="admin-field" style="margin-bottom: 12px;">
+            <label for="faviconColor">Иконка во вкладке браузера (favicon)</label>
+            <select id="faviconColor" name="favicon_color" style="padding: 8px 12px; border-radius: 6px; background: var(--adm-surface); border: 1px solid var(--adm-border); color: var(--adm-text); min-width: 240px;">
+                <?php foreach ($logoColorOptions as $colorKey => $colorLabel): ?>
+                    <option value="<?= htmlspecialchars($colorKey) ?>" <?= $currentFaviconColor === $colorKey ? 'selected' : '' ?>><?= htmlspecialchars($colorLabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <small style="color: var(--adm-muted); display: block; margin-top: 4px;">Тот же файл, что и логотип студии. «Как в файле» — без перекраски; иначе применяется та же логика заливки, что в превью логотипа. Учитывается опция «Убрать светлый фон», если она включена.</small>
         </div>
         <div class="admin-field" style="margin-bottom: 12px;">
             <label for="logoSizeRange">Размер логотипа</label>
@@ -762,20 +823,54 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
 
 <div class="admin-section" id="map" data-subtheme="location">
     <h2>Адреса на карте</h2>
-    <p>Добавьте адреса студии. Вставьте ссылку на точку в Google Maps или Yandex Maps — координаты извлекутся автоматически. Блок карты отображается на главной перед лентой.</p>
-    <form method="post" action="" style="margin-bottom: 20px;">
+    <p>На главной отображается блок с <strong>Яндекс.Картами</strong>. Удобнее всего поставить метку кликом по карте ниже (нужен бесплатный ключ <a href="https://developer.tech.yandex.ru/services/" target="_blank" rel="noopener">JavaScript API и HTTP Геокодер</a>). Альтернатива — вставить ссылку из браузера Яндекс.Карт (с <code>ll=</code> или <code>pt=</code>) или координаты <code>широта,долгота</code>.</p>
+
+    <form method="post" action="" class="admin-map-api-form" style="margin-bottom: 20px; padding: 16px; background: var(--adm-surface, #1e1e24); border: 1px solid var(--adm-border, #333); border-radius: 8px;">
+        <input type="hidden" name="action" value="save_yandex_maps_api_key">
+        <div class="admin-field" style="margin-bottom: 8px;">
+            <label for="yandex_maps_api_key">Ключ API Яндекс.Карт (для выбора точки на карте)</label>
+            <input type="text" id="yandex_maps_api_key" name="yandex_maps_api_key" value="<?= htmlspecialchars(Settings::get('yandex_maps_api_key', '')) ?>" placeholder="Вставьте ключ из кабинета разработчика" autocomplete="off" style="width: 100%; max-width: 560px;">
+        </div>
+        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--sm">Сохранить ключ</button>
+    </form>
+
+    <?php
+    $yandexMapApiKey = Settings::get('yandex_maps_api_key', '');
+    $ymCenterLat = 55.755814;
+    $ymCenterLng = 37.617634;
+    if (!empty($mapLocations)) {
+        $firstMl = $mapLocations[0];
+        $ymCenterLat = (float) ($firstMl['lat'] ?? $ymCenterLat);
+        $ymCenterLng = (float) ($firstMl['lng'] ?? $ymCenterLng);
+    }
+    ?>
+    <form method="post" action="" class="admin-add-map-form" style="margin-bottom: 20px;" id="addMapLocationForm" onsubmit="return typeof window.__adminMapFormValidate === 'function' ? window.__adminMapFormValidate(this) : true;">
         <input type="hidden" name="action" value="add_map_location">
+        <input type="hidden" name="pick_lat" id="pick_lat" value="">
+        <input type="hidden" name="pick_lng" id="pick_lng" value="">
         <div class="admin-field">
             <label>Название (опционально)</label>
             <input type="text" name="title" placeholder="Студия на Арбате">
         </div>
         <div class="admin-field">
-            <label>Адрес для отображения</label>
+            <label>Адрес для отображения на сайте</label>
             <input type="text" name="address" placeholder="ул. Арбат, 12" required>
         </div>
+        <?php if ($yandexMapApiKey !== ''): ?>
         <div class="admin-field">
-            <label>Ссылка на объект (Google Maps / Yandex Maps)</label>
-            <input type="url" name="map_url" placeholder="https://www.google.com/maps/place/..." required style="width: 100%; max-width: 500px;">
+            <label>Точка на карте</label>
+            <p style="margin: 0 0 8px; font-size: 0.9rem; color: var(--adm-muted, #888);">Кликните по карте, чтобы поставить метку. Метку можно перетащить. Координаты: <strong id="pickCoordsDisplay">не выбраны</strong></p>
+            <div id="adminYandexMapPicker" class="admin-yandex-map-picker"></div>
+            <button type="button" class="admin-btn admin-btn--secondary admin-btn--sm" id="clearMapPick" style="margin-top: 10px;">Сбросить метку</button>
+        </div>
+        <?php else: ?>
+        <div class="admin-field">
+            <p style="margin: 0; padding: 12px; background: var(--adm-surface, #1e1e24); border-radius: 8px; color: var(--adm-muted, #888); font-size: 0.9rem;">Сохраните ключ API выше — появится карта для выбора точки кликом.</p>
+        </div>
+        <?php endif; ?>
+        <div class="admin-field">
+            <label>Ссылка или координаты (если не выбираете на карте)</label>
+            <input type="text" name="map_url" id="map_url_manual" placeholder="https://yandex.ru/maps/... или 55.7558,37.6173" autocomplete="off" style="width: 100%; max-width: 560px;">
         </div>
         <div class="admin-field">
             <label>Порядок</label>
@@ -783,6 +878,86 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
         </div>
         <button type="submit" class="admin-btn admin-btn--primary">Добавить адрес</button>
     </form>
+    <?php if ($yandexMapApiKey !== ''): ?>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=<?= rawurlencode($yandexMapApiKey) ?>&amp;lang=ru_RU"></script>
+    <script>
+    (function () {
+        var center = [<?= json_encode((float) $ymCenterLat, JSON_UNESCAPED_UNICODE) ?>, <?= json_encode((float) $ymCenterLng, JSON_UNESCAPED_UNICODE) ?>];
+        var pickLat = document.getElementById('pick_lat');
+        var pickLng = document.getElementById('pick_lng');
+        var display = document.getElementById('pickCoordsDisplay');
+        var manual = document.getElementById('map_url_manual');
+        var placemark = null;
+        function setPick(lat, lng) {
+            if (pickLat) pickLat.value = String(lat);
+            if (pickLng) pickLng.value = String(lng);
+            if (display) display.textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+            if (manual) manual.value = '';
+        }
+        function clearPick() {
+            if (pickLat) pickLat.value = '';
+            if (pickLng) pickLng.value = '';
+            if (display) display.textContent = 'не выбраны';
+            if (placemark && window.__adminYandexMap) {
+                window.__adminYandexMap.geoObjects.remove(placemark);
+                placemark = null;
+            }
+        }
+        window.__adminMapFormValidate = function (form) {
+            var lat = form.pick_lat && form.pick_lat.value.trim();
+            var lng = form.pick_lng && form.pick_lng.value.trim();
+            var urlEl = form.elements.namedItem('map_url');
+            var url = urlEl ? String(urlEl.value).trim() : '';
+            if ((!lat || !lng) && !url) {
+                alert('Выберите точку на карте кликом или заполните поле «Ссылка или координаты».');
+                return false;
+            }
+            return true;
+        };
+        document.getElementById('clearMapPick') && document.getElementById('clearMapPick').addEventListener('click', clearPick);
+        if (typeof ymaps === 'undefined') {
+            var holder = document.getElementById('adminYandexMapPicker');
+            if (holder) {
+                holder.innerHTML = '<p style="padding:16px;color:var(--adm-muted);margin:0;">Не удалось загрузить API Яндекс.Карт. Проверьте ключ и ограничения ключа по HTTP Referer.</p>';
+            }
+            return;
+        }
+        ymaps.ready(function () {
+            var el = document.getElementById('adminYandexMapPicker');
+            if (!el) return;
+            var map = new ymaps.Map('adminYandexMapPicker', {
+                center: center,
+                zoom: 14,
+                controls: ['zoomControl', 'geolocationControl', 'typeSelector']
+            });
+            window.__adminYandexMap = map;
+            map.events.add('click', function (e) {
+                var c = e.get('coords');
+                if (placemark) map.geoObjects.remove(placemark);
+                placemark = new ymaps.Placemark(c, {}, { preset: 'islands#redDotIcon', draggable: true });
+                map.geoObjects.add(placemark);
+                setPick(c[0], c[1]);
+                placemark.events.add('dragend', function () {
+                    var p = placemark.geometry.getCoordinates();
+                    setPick(p[0], p[1]);
+                });
+            });
+        });
+    })();
+    </script>
+    <?php else: ?>
+    <script>
+    window.__adminMapFormValidate = function (form) {
+        var urlEl = form.elements.namedItem('map_url');
+        var url = urlEl ? String(urlEl.value).trim() : '';
+        if (!url) {
+            alert('Вставьте ссылку Яндекс.Карт или координаты (широта,долгота), либо сохраните ключ API и выберите точку на карте.');
+            return false;
+        }
+        return true;
+    };
+    </script>
+    <?php endif; ?>
     <?php if (!empty($mapLocations)): ?>
     <div class="admin-table-wrap">
         <table class="admin-table">
@@ -938,7 +1113,7 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
 <section class="admin-theme" data-theme="users">
 <div class="admin-section" id="users">
     <h2>Пользователи</h2>
-    <p class="admin-hint" style="margin: 0 0 12px; font-size: 0.9rem; color: var(--text-muted);">Верификация: мастера и админы в панели отображаются с правами мастера, но без верификации — до неё они не показываются на сайте. Можно снять роль (перевести в клиента) или верифицировать: тогда пользователь попадает в список мастеров и получает полные права мастера на сайте.</p>
+    <p class="admin-hint" style="margin: 0 0 12px; font-size: 0.9rem; color: var(--text-muted);">Верификация: мастера и админы в панели отображаются с правами мастера, но без верификации — до неё они не показываются на сайте. Можно снять роль (перевести в клиента) или верифицировать: тогда пользователь попадает в список мастеров и получает полные права мастера на сайте. Видимость профиля: мастер может скрыть себя в настройках; здесь можно принудительно показать или скрыть профиль независимо от его выбора. Удаление необратимо; последнего администратора удалить нельзя — сначала назначьте другого админа.</p>
     <div class="admin-table-wrap">
     <table class="admin-table">
         <thead>
@@ -993,12 +1168,7 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
                                 </form>
                             <?php endif; ?>
                             <?php if (in_array($u['role'], ['master', 'admin'], true)): ?>
-                                <?php
-                                $stmt = \App\Database::get()->prepare("SELECT is_verified FROM master_profiles WHERE user_id = ?");
-                                $stmt->execute([$u['id']]);
-                                $mp = $stmt->fetch();
-                                $verified = !empty($mp['is_verified']);
-                                ?>
+                                <?php $verified = !empty($u['is_verified']); ?>
                                 <?php if (!$verified): ?>
                                     <form method="post" action="" style="display:inline;" title="Проверенный мастер: у имени будет отображаться отметка на сайте">
                                         <input type="hidden" name="action" value="verify">
@@ -1012,7 +1182,24 @@ require dirname(__DIR__, 2) . '/templates/layout/header.php';
                                         <button type="submit" class="admin-btn admin-btn--secondary admin-btn--sm">Снять верификацию</button>
                                     </form>
                                 <?php endif; ?>
+                                <?php
+                                $admVis = (string)($u['admin_profile_visibility'] ?? '');
+                                ?>
+                                <form method="post" action="" style="display:inline-flex; align-items:center; gap:4px; margin-top:4px;" title="Переопределение видимости профиля на сайте">
+                                    <input type="hidden" name="action" value="admin_profile_visibility">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <select name="visibility_mode" onchange="this.form.submit()" aria-label="Видимость профиля" style="max-width:12rem;font-size:0.8rem;padding:4px 6px;">
+                                        <option value="default"<?= $admVis === '' ? ' selected' : '' ?>>Профиль: как у мастера</option>
+                                        <option value="force_show"<?= $admVis === 'force_show' ? ' selected' : '' ?>>Профиль: показать</option>
+                                        <option value="force_hide"<?= $admVis === 'force_hide' ? ' selected' : '' ?>>Профиль: скрыть</option>
+                                    </select>
+                                </form>
                             <?php endif; ?>
+                                <form method="post" action="" style="display:inline;" onsubmit="return confirm('Удалить пользователя безвозвратно? Все связанные данные (посты, отзывы, переписки) будут удалены.');">
+                                    <input type="hidden" name="action" value="delete_user">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <button type="submit" class="admin-btn admin-btn--danger admin-btn--sm">Удалить</button>
+                                </form>
                             </div>
                         <?php endif; ?>
                     </td>

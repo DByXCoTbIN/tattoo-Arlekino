@@ -885,3 +885,14 @@ body.admin-page .site-footer {
     min-height: 72px;
 }
 body.admin-page .site-footer a { color: var(--adm-accent); }
+
+/* Выбор точки на Яндекс.Карте (настройки сайта) */
+.admin-yandex-map-picker {
+    width: 100%;
+    max-width: 720px;
+    height: 380px;
+    border-radius: var(--adm-radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--adm-border);
+    background: var(--adm-surface-hover);
+}

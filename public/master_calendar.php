@@ -78,6 +78,25 @@ foreach ($bookingRepo->getUpcomingConfirmed($masterId, $today, $tomorrow) as $b)
 $monthStart = sprintf('%04d-%02d-01', $year, $month);
 $monthEnd = date('Y-m-t', strtotime($monthStart));
 $datesWithBookings = $bookingRepo->getDatesWithBookings($masterId, $monthStart, $monthEnd);
+$offDatesInMonth = [];
+$schedCal = $bookingRepo->getSchedule($masterId);
+if ($schedCal) {
+    $wOff = $schedCal['off_weekdays'] ?? [];
+    $explicitOff = [];
+    try {
+        $explicitOff = $bookingRepo->listDayOffsFrom($masterId, $monthStart);
+    } catch (\Throwable $e) {
+    }
+    $explicitSet = array_flip($explicitOff);
+    $dim = (int) date('t', strtotime($monthStart));
+    for ($d = 1; $d <= $dim; $d++) {
+        $dStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
+        $n = (int) date('N', strtotime($dStr . ' 12:00:00'));
+        if (in_array($n, $wOff, true) || isset($explicitSet[$dStr])) {
+            $offDatesInMonth[] = $dStr;
+        }
+    }
+}
 $prevMonth = $month - 1;
 $prevYear = $year;
 if ($prevMonth < 1) {

@@ -15,13 +15,23 @@ class BookingRepository
         $this->pdo = Database::get();
     }
 
-    /** Получить расписание мастера (рабочие часы, длительность слота) */
+    /** Получить расписание мастера (рабочие часы, длительность слота, выходные по дням недели) */
     public function getSchedule(int $masterId): ?array
     {
         $stmt = $this->pdo->prepare("SELECT * FROM master_schedule WHERE master_id = ?");
         $stmt->execute([$masterId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+        $raw = $row['off_weekdays'] ?? '[]';
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $row['off_weekdays'] = is_array($decoded) ? array_values(array_unique(array_map('intval', $decoded))) : [];
+        } elseif (!is_array($row['off_weekdays'] ?? null)) {
+            $row['off_weekdays'] = [];
+        }
+        return $row;
     }
 
     /** Вычислить длительность рабочего дня в часах (00:00–23:59). work_end=00:00 трактуется как конец дня (24:00). */
@@ -47,26 +57,122 @@ class BookingRepository
         return '10:00:00';
     }
 
-    /** Сохранить/обновить расписание мастера. slot_duration хранится в часах (1, 2, 3...) */
-    public function saveSchedule(int $masterId, string $workStart, string $workEnd, int $slotDuration): void
+    /**
+     * Сохранить/обновить расписание мастера. slot_duration хранится в часах (1, 2, 3...).
+     * @param string $offWeekdaysJson JSON-массив номеров дней ISO 1–7 (пн–вс), в которые мастер не принимает онлайн-запись
+     */
+    public function saveSchedule(int $masterId, string $workStart, string $workEnd, int $slotDuration, string $offWeekdaysJson = '[]'): void
     {
         $workStart = $this->normalizeTime($workStart);
         $workEnd = $this->normalizeTime($workEnd);
         $maxHours = $this->getWorkDurationHours($workStart, $workEnd);
         $slotDuration = max(1, min($maxHours, $slotDuration));
+        $offWeekdaysJson = $this->normalizeOffWeekdaysJson($offWeekdaysJson);
         $row = $this->getSchedule($masterId);
         if ($row) {
-            $stmt = $this->pdo->prepare("UPDATE master_schedule SET work_start=?, work_end=?, slot_duration=? WHERE master_id=?");
-            $stmt->execute([$workStart, $workEnd, $slotDuration, $masterId]);
+            try {
+                $stmt = $this->pdo->prepare("UPDATE master_schedule SET work_start=?, work_end=?, slot_duration=?, off_weekdays=? WHERE master_id=?");
+                $stmt->execute([$workStart, $workEnd, $slotDuration, $offWeekdaysJson, $masterId]);
+            } catch (\Throwable $e) {
+                $stmt = $this->pdo->prepare("UPDATE master_schedule SET work_start=?, work_end=?, slot_duration=? WHERE master_id=?");
+                $stmt->execute([$workStart, $workEnd, $slotDuration, $masterId]);
+            }
         } else {
-            $stmt = $this->pdo->prepare("INSERT INTO master_schedule (master_id, work_start, work_end, slot_duration) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$masterId, $workStart, $workEnd, $slotDuration]);
+            try {
+                $stmt = $this->pdo->prepare("INSERT INTO master_schedule (master_id, work_start, work_end, slot_duration, off_weekdays) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$masterId, $workStart, $workEnd, $slotDuration, $offWeekdaysJson]);
+            } catch (\Throwable $e) {
+                $stmt = $this->pdo->prepare("INSERT INTO master_schedule (master_id, work_start, work_end, slot_duration) VALUES (?, ?, ?, ?)");
+                $stmt->execute([$masterId, $workStart, $workEnd, $slotDuration]);
+            }
         }
     }
 
-    /** Клиент: создать запрос на запись (ожидает подтверждения мастера) */
+    private function normalizeOffWeekdaysJson(string $json): string
+    {
+        $arr = json_decode($json, true);
+        if (!is_array($arr)) {
+            return '[]';
+        }
+        $out = [];
+        foreach ($arr as $n) {
+            $n = (int) $n;
+            if ($n >= 1 && $n <= 7) {
+                $out[$n] = $n;
+            }
+        }
+        ksort($out);
+        return json_encode(array_values($out));
+    }
+
+    /** Даты выходных с указанной даты (YYYY-MM-DD) и дальше */
+    public function listDayOffsFrom(int $masterId, string $fromYmd): array
+    {
+        $stmt = $this->pdo->prepare("SELECT off_date FROM master_day_off WHERE master_id = ? AND off_date >= ? ORDER BY off_date");
+        $stmt->execute([$masterId, $fromYmd]);
+        return array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'off_date');
+    }
+
+    public function addDayOff(int $masterId, string $dateYmd): bool
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd)) {
+            return false;
+        }
+        try {
+            if (Database::isSqlite()) {
+                $this->pdo->prepare("INSERT OR IGNORE INTO master_day_off (master_id, off_date) VALUES (?, ?)")->execute([$masterId, $dateYmd]);
+            } else {
+                $this->pdo->prepare("INSERT IGNORE INTO master_day_off (master_id, off_date) VALUES (?, ?)")->execute([$masterId, $dateYmd]);
+            }
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    public function removeDayOff(int $masterId, string $dateYmd): void
+    {
+        $this->pdo->prepare("DELETE FROM master_day_off WHERE master_id = ? AND off_date = ?")->execute([$masterId, $dateYmd]);
+    }
+
+    /** Можно ли клиенту запросить запись на эту дату (расписание есть, не выходной по неделе и не в списке дат) */
+    public function isBookableDate(int $masterId, string $dateYmd): bool
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateYmd)) {
+            return false;
+        }
+        $sched = $this->getSchedule($masterId);
+        if (!$sched) {
+            return false;
+        }
+        $ts = strtotime($dateYmd . ' 12:00:00');
+        if ($ts === false) {
+            return false;
+        }
+        $today = strtotime(date('Y-m-d') . ' 12:00:00');
+        if ($ts < $today) {
+            return false;
+        }
+        $weekday = (int) date('N', $ts);
+        $offW = $sched['off_weekdays'] ?? [];
+        if (in_array($weekday, $offW, true)) {
+            return false;
+        }
+        try {
+            $stmt = $this->pdo->prepare("SELECT 1 FROM master_day_off WHERE master_id = ? AND off_date = ?");
+            $stmt->execute([$masterId, $dateYmd]);
+            return $stmt->fetchColumn() === false;
+        } catch (\Throwable $e) {
+            return true;
+        }
+    }
+
+    /** Клиент: создать запрос на запись (ожидает подтверждения мастера). null — дата недоступна */
     public function createBookingRequest(int $masterId, int $clientId, string $date): ?int
     {
+        if (!$this->isBookableDate($masterId, $date)) {
+            return null;
+        }
         $stmt = $this->pdo->prepare("
             INSERT INTO bookings (master_id, client_id, booking_date, status)
             VALUES (?, ?, ?, 'pending')

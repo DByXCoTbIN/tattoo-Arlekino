@@ -25,7 +25,7 @@ $root = (defined('BASE_PATH') && BASE_PATH !== '') ? rtrim(BASE_PATH, '/') . '/'
 
 $masterId = (int)($_GET['master'] ?? 0);
 $userRepo = new UserRepo();
-$master = $masterId ? $userRepo->getMasterProfile($masterId, true) : null;
+$master = $masterId ? $userRepo->getMasterProfile($masterId, true, true) : null;
 if (!$master) {
     header('Location: ' . $root . 'masters.php');
     exit;
@@ -33,15 +33,27 @@ if (!$master) {
 
 $bookingRepo = new BookingRepository();
 $schedule = $bookingRepo->getSchedule($masterId);
+$dayOffDates = [];
+$offWeekdays = [];
+if ($schedule) {
+    $dayOffDates = $bookingRepo->listDayOffsFrom($masterId, date('Y-m-d'));
+    $offWeekdays = $schedule['off_weekdays'] ?? [];
+}
 
 $error = '';
 $success = '';
 $selectedDate = trim($_GET['date'] ?? '');
+if ($schedule && $selectedDate !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $selectedDate) && !$bookingRepo->isBookableDate($masterId, $selectedDate)) {
+    $error = 'На эту дату запись недоступна (выходной). Выберите другую дату.';
+    $selectedDate = '';
+}
 
 if ($schedule && $_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['action'] ?? '') === 'request')) {
     $date = trim($_POST['booking_date'] ?? '');
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         $error = 'Выберите дату.';
+    } elseif (!$bookingRepo->isBookableDate($masterId, $date)) {
+        $error = 'На эту дату запись недоступна (выходной).';
     } else {
         $id = $bookingRepo->createBookingRequest($masterId, (int)$user['id'], $date);
         if ($id) {

@@ -17,30 +17,40 @@ try {
 $isSqlite = $driver === 'sqlite';
 $sqlFile = $isSqlite ? $base . '/database/migration_v9_bookings.sqlite.sql' : $base . '/database/migration_v9_bookings.sql';
 $sql = file_get_contents($sqlFile);
+$sql = trim(preg_replace('/^\s*--[^\n]*$/m', '', $sql));
+$sql = trim($sql);
 
-function runStatement($pdo, $sql, $isSqlite) {
-    $sql = trim($sql);
-    if ($sql === '' || strpos($sql, '--') === 0) return true;
+if ($isSqlite) {
     try {
         $pdo->exec($sql);
-        echo "OK: " . substr(preg_replace('/\s+/', ' ', $sql), 0, 70) . "...\n";
-        return true;
+        echo "OK: master_schedule, bookings\n";
     } catch (PDOException $e) {
         $msg = $e->getMessage();
         if (preg_match('/Duplicate|already exists|duplicate column/i', $msg)) {
-            echo "Skip (exists): " . substr($sql, 0, 50) . "\n";
-            return true;
+            echo "Skip (already exists)\n";
+        } else {
+            echo "Error: $msg\n";
+            exit(1);
         }
-        echo "Error: $msg\n";
-        return false;
     }
-}
-
-$statements = array_filter(preg_split('/;\s*[\r\n]+/', $sql));
-foreach ($statements as $s) {
-    $s = trim($s);
-    if ($s === '' || strpos($s, '--') === 0) continue;
-    if (substr($s, -1) !== ';') $s .= ';';
-    runStatement($pdo, $s, $isSqlite);
+} else {
+    $parts = array_filter(array_map('trim', preg_split('/;\s*[\r\n]+/', $sql)));
+    foreach ($parts as $stmt) {
+        if ($stmt === '') {
+            continue;
+        }
+        try {
+            $pdo->exec($stmt . ';');
+            echo "OK: " . substr(preg_replace('/\s+/', ' ', $stmt), 0, 60) . "...\n";
+        } catch (PDOException $e) {
+            $msg = $e->getMessage();
+            if (preg_match('/Duplicate|already exists|duplicate column/i', $msg)) {
+                echo "Skip (exists)\n";
+            } else {
+                echo "Error: $msg\n";
+                exit(1);
+            }
+        }
+    }
 }
 echo "Миграция v9 завершена.\n";
