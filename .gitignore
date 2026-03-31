@@ -1,7 +1,9 @@
 /vendor/
 .env
+.env.example
 /public/uploads/*
 !/public/uploads/.gitkeep
 /data/*.db
 php-errors.log
 *.log
+DEPLOY.md
